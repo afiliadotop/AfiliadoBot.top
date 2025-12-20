@@ -1,0 +1,38 @@
+# --- Core API & Backend ---
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+pydantic==2.6.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# --- Database ---
+supabase==2.4.3
+postgrest==0.16.3
+gotrue==2.4.2
+
+# --- Data Processing (PESADO - Mantenha só se for CRÍTICO para o Bot) ---
+# Se o seu bot não fizer cálculos complexos, remova pandas e numpy para economizar 130MB!
+pandas==2.2.1
+numpy==1.26.4
+
+# --- Requests ---
+aiohttp==3.9.3
+requests==2.31.0
+
+# --- Excel/Relatórios ---
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+# reportlab removido se não for essencial (economiza espaço)
+
+# --- Telegram Bot ---
+python-telegram-bot==20.8
+
+# --- Utils ---
+python-dateutil==2.8.2
+psutil==5.9.8
+# setuptools removido (já vem no ambiente)
+# pytest/black/flake8 removidos (são para dev, não produção)
+
+# --- HTTPX (Resolvido) ---
+# Deixe o pip resolver

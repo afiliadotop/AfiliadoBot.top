@@ -1,0 +1,37 @@
+# Core API & Backend
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+python-dotenv
+
+# Database
+supabase
+
+# Data Processing
+pandas
+numpy
+
+# Requests
+aiohttp
+requests
+
+# Excel/Reports  
+openpyxl
+xlsxwriter
+reportlab
+
+# Telegram Bot
+python-telegram-bot
+
+# Visualization (for advanced_analytics and dashboard)
+plotly
+streamlit
+
+# Utils
+python-dateutil
+psutil
+
+
+pyjwt

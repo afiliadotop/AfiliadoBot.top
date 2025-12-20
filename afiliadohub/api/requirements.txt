@@ -1,0 +1,34 @@
+# Versão do Python (já resolvida pelo .python-version)
+python-version>=3.12
+
+# Framework principal e servidor ASGI
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Banco de dados
+supabase>=1.1.1
+
+# Bot do Telegram
+python-telegram-bot[job-queue]>=20.7
+
+# Manipulação de dados (remova se não usar no bot)
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Clientes HTTP
+httpx>=0.24.0
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# Utilitários
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+schedule>=1.2.0
+structlog>=23.2.0
+
+# Remova as linhas abaixo se seu bot NÃO precisa delas:
+# reportlab>=4.0.9   # (Geração de PDF)
+# openpyxl>=3.1.2    # (Manipulação de Excel)
+# asyncio>=3.4.3     # (Já vem com o Python)

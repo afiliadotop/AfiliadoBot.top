@@ -1,0 +1,300 @@
+name: 🤖 AfiliadoHub - Automação Completa
+
+on:
+  schedule:
+    # A cada 5 minutos (envio de promoções)
+    - cron: '*/5 * * * *'
+    
+    # A cada hora (atualização de preços)
+    - cron: '0 * * * *'
+    
+    # Uma vez por dia (limpeza e relatórios)
+    - cron: '0 3 * * *'
+    
+    # Segunda a Sábado às 8h (envio diário)
+    - cron: '0 8 * * 1-6'
+  
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Ação a executar'
+        required: true
+        default: 'send_promo'
+        type: choice
+        options:
+        - send_promo
+        - update_prices
+        - cleanup
+        - stats_report
+        - all
+      store:
+        description: 'Loja específica (opcional)'
+        required: false
+        type: string
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  send_promotions:
+    if: github.event.inputs.action == 'send_promo' || github.event.inputs.action == 'all' || github.event.schedule == '*/5 * * * *'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 🏗️ Preparar ambiente
+        run: |
+          echo "🕐 Iniciando envio de promoções"
+          echo "📅 Data: $(date)"
+      
+      - name: 🔍 Buscar produtos para enviar
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          # Script para buscar produtos não enviados recentemente
+          python3 -c "
+          import os, requests, json
+          from datetime import datetime, timedelta
+          
+          # Configuração
+          supabase_url = os.getenv('SUPABASE_URL')
+          supabase_key = os.getenv('SUPABASE_KEY')
+          
+          # Busca produtos não enviados nos últimos 7 dias
+          headers = {
+              'apikey': supabase_key,
+              'Authorization': f'Bearer {supabase_key}',
+              'Content-Type': 'application/json'
+          }
+          
+          # Query para produtos com bom desconto não enviados recentemente
+          query = '''
+          SELECT p.* 
+          FROM products p
+          LEFT JOIN product_stats ps ON p.id = ps.product_id
+          WHERE p.is_active = true
+          AND p.discount_percentage >= 20
+          AND (ps.last_sent IS NULL OR ps.last_sent < NOW() - INTERVAL \'7 days\')
+          ORDER BY p.discount_percentage DESC, RANDOM()
+          LIMIT 5
+          '''
+          
+          response = requests.post(
+              f'{supabase_url}/rest/v1/rpc/get_random_products_by_store',
+              headers=headers,
+              json={'p_limit': 3, 'p_min_discount': 20}
+          )
+          
+          if response.status_code == 200:
+              products = response.json()
+              print(f'📦 Produtos encontrados: {len(products)}')
+              
+              # Salva produtos para envio
+              with open('products_to_send.json', 'w') as f:
+                  json.dump(products, f)
+              
+              # Cria mensagens
+              messages = []
+              for product in products:
+                  store_emoji = {
+                      'shopee': '🛍️', 'aliexpress': '📦', 'amazon': '📚',
+                      'temu': '🎯', 'shein': '👗', 'magalu': '🏬',
+                      'mercado_livre': '🚀'
+                  }.get(product.get('store'), '🏪')
+                  
+                  msg = f'''{store_emoji} *{product.get('name', 'Produto')}*
+
+💰 Preço: R$ {product.get('current_price', 0):.2f}
+🎫 Desconto: {product.get('discount_percentage', 0)}% OFF
+
+🔗 [Ver Produto]({product.get('affiliate_link')})
+
+#{product.get('store')} #promoção
+                  '''
+                  messages.append(msg)
+              
+              with open('messages.json', 'w') as f:
+                  json.dump(messages, f)
+                  
+          else:
+              print('❌ Erro ao buscar produtos')
+              print(f'Status: {response.status_code}')
+              print(f'Resposta: {response.text}')
+          "
+      
+      - name: 📤 Enviar para Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -f "messages.json" ]; then
+            messages=$(cat messages.json)
+            echo "$messages" | jq -c '.[]' | while read message; do
+              # Remove aspas do JSON
+              clean_msg=$(echo "$message" | sed 's/^"//' | sed 's/"$//')
+              
+              echo "📤 Enviando mensagem..."
+              
+              # Envia via endpoint da API
+              curl -X POST "$VERCEL_URL/api/telegram/send" \
+                -H "Content-Type: application/json" \
+                -H "x-cron-token: $CRON_TOKEN" \
+                -d "{\"chat_id\": \"$GROUP_CHAT_ID\", \"message\": $(echo $clean_msg | jq -R -s '.')}"
+              
+              # Aguarda 2 segundos entre envios
+              sleep 2
+            done
+            echo "✅ Mensagens enviadas com sucesso"
+          else
+            echo "📭 Nenhuma mensagem para enviar"
+          fi
+      
+      - name: 📊 Registrar envios
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -f "products_to_send.json" ]; then
+            products=$(cat products_to_send.json)
+            echo "$products" | jq -c '.[]' | while read product; do
+              product_id=$(echo "$product" | jq -r '.id')
+              
+              # Atualiza estatísticas no Supabase
+              curl -X POST "$SUPABASE_URL/rest/v1/rpc/increment_stat" \
+                -H "apikey: $SUPABASE_KEY" \
+                -H "Authorization: Bearer $SUPABASE_KEY" \
+                -H "Content-Type: application/json" \
+                -d "{\"p_product_id\": $product_id, \"p_stat_type\": \"telegram_send_count\", \"p_increment\": 1}"
+              
+              echo "📈 Estatísticas atualizadas para produto $product_id"
+            done
+          fi
+      
+      - name: ✅ Concluir
+        run: |
+          echo "🎉 Envio de promoções concluído!"
+          echo "🕐 Finalizado em: $(date)"
+  
+  update_products:
+    if: github.event.inputs.action == 'update_prices' || github.event.inputs.action == 'all' || github.event.schedule == '0 * * * *'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 🔄 Atualizar preços e estoque
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          echo "🔄 Iniciando atualização de produtos..."
+          
+          # Chama endpoint de atualização
+          curl -X POST "$VERCEL_URL/api/products/update_prices" \
+            -H "x-cron-token: $CRON_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"batch_size": 100}'
+          
+          echo "✅ Atualização iniciada em background"
+  
+  daily_shopee_import:
+    if: github.event.schedule == '0 2 * * *'  # 2h da manhã
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📥 Importar CSV diário da Shopee
+        env:
+          SHOPEE_CSV_URL: ${{ secrets.SHOPEE_CSV_URL }}
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          echo "🛍️ Importando CSV diário da Shopee..."
+          
+          # Usa a URL do CSV diário (configurada como secret)
+          curl -X POST "$VERCEL_URL/api/import/shopee_daily" \
+            -H "Authorization: Bearer $ADMIN_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"csv_url\": \"$SHOPEE_CSV_URL\"}"
+          
+          echo "✅ Importação da Shopee iniciada"
+  
+  cleanup:
+    if: github.event.inputs.action == 'cleanup' || github.event.inputs.action == 'all' || github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 🧹 Limpeza de produtos antigos
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          echo "🧹 Iniciando limpeza de produtos antigos..."
+          
+          curl -X POST "$VERCEL_URL/api/maintenance/cleanup" \
+            -H "x-cron-token: $CRON_TOKEN" \
+            -d '{"days_old": 30}'
+          
+          echo "✅ Limpeza concluída"
+  
+  stats_report:
+    if: github.event.inputs.action == 'stats_report' || github.event.inputs.action == 'all' || github.event.schedule == '0 6 * * *'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 📊 Gerar relatório diário
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          echo "📈 Gerando relatório diário..."
+          
+          # Busca estatísticas
+          response=$(curl -s "$VERCEL_URL/api/stats/daily" \
+            -H "Authorization: Bearer $ADMIN_API_KEY")
+          
+          echo "📋 Relatório do dia anterior:"
+          echo "$response" | jq .
+          
+          # Pode enviar por email ou salvar em log
+          echo "$response" > daily_report_$(date +%Y%m%d).json
+          
+          echo "✅ Relatório gerado"
+  
+  backup:
+    if: github.event.schedule == '0 4 * * *'  # 4h da manhã
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: 💾 Backup do banco de dados
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          echo "💾 Iniciando backup..."
+          
+          # Exporta dados principais
+          tables=("products" "product_stats" "product_logs")
+          
+          for table in "${tables[@]}"; do
+            echo "Exportando tabela: $table"
+            
+            curl -X GET "$SUPABASE_URL/rest/v1/$table?select=*" \
+              -H "apikey: $SUPABASE_KEY" \
+              -H "Authorization: Bearer $SUPABASE_KEY" \
+              -o "${table}_backup_$(date +%Y%m%d).json"
+            
+            echo "✅ $table exportada"
+          done
+          
+          # Compacta backups
+          tar -czf backup_$(date +%Y%m%d).tar.gz *_backup_*.json
+          
+          echo "✅ Backup concluído: backup_$(date +%Y%m%d).tar.gz"

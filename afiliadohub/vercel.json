@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "dashboard/app.py", // Aponta para o arquivo principal do Streamlit
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "dashboard/app.py"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+    "python.analysis.extraPaths": [
+        "./afiliadohub"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./afiliadohub"
+    ]
+}

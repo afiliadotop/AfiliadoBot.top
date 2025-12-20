@@ -1,0 +1,7 @@
+# Ignora TUDO por padrão
+*
+
+# Permite APENAS os arquivos e pastas necessários para o dashboard funcionar
+!dashboard/
+!dashboard/**
+!vercel.json
