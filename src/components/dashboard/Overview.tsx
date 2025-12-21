@@ -37,7 +37,7 @@ export const Overview = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard
                         title="Produtos Ativos"
-                        value={stats?.active_products.toLocaleString()}
+                        value={stats?.active_products?.toLocaleString()}
                         change="+24"
                         icon={<LinkIcon className="text-blue-500" />}
                         loading={loading}
@@ -58,7 +58,7 @@ export const Overview = () => {
                     />
                     <StatCard
                         title="Envios Telegram"
-                        value={stats?.telegram_sends.toLocaleString()}
+                        value={stats?.telegram_sends?.toLocaleString()}
                         change="+185"
                         icon={<Send className="text-indigo-500" />}
                         loading={loading}
