@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link as LinkIcon, Globe, Tag, Send, Activity, Zap, PieChart } from "lucide-react";
 import { api } from "../../services/api";
 import { DashboardStats } from "../../types";

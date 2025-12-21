@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Search, Plus, Filter, Trash2, Edit, Package } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
 import { PageTransition } from "../layout/PageTransition";
@@ -14,11 +14,14 @@ export const Products = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-    const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        (storeFilter ? p.store === storeFilter : true) &&
-        (categoryFilter ? p.category === categoryFilter : true)
-    );
+    const filteredProducts = (products || []).filter(p => {
+        if (!p || !p.name) return false;
+        return (
+            p.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+            (storeFilter ? p.store === storeFilter : true) &&
+            (categoryFilter ? p.category === categoryFilter : true)
+        );
+    });
 
     const handleDelete = async (id: number, name: string) => {
         if (confirm(`Tem certeza que deseja deletar "${name}"?`)) {
@@ -138,17 +141,17 @@ export const Products = () => {
                                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                                     {filteredProducts.map((p) => (
                                         <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                            <td className="px-6 py-4 text-slate-500">#{p.id.toString().substring(0, 8)}</td>
-                                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-200">{p.name}</td>
+                                            <td className="px-6 py-4 text-slate-500">#{p?.id?.toString().substring(0, 8) || '---'}</td>
+                                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-200">{p?.name || 'Sem nome'}</td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded text-xs font-medium ${p.store === 'shopee' ? 'bg-orange-100 text-orange-700' :
-                                                    p.store === 'amazon' ? 'bg-yellow-100 text-yellow-700' :
+                                                <span className={`px-2 py-1 rounded text-xs font-medium ${p?.store === 'shopee' ? 'bg-orange-100 text-orange-700' :
+                                                    p?.store === 'amazon' ? 'bg-yellow-100 text-yellow-700' :
                                                         'bg-blue-100 text-blue-700'
                                                     }`}>
-                                                    {p.store}
+                                                    {p?.store || 'Desconhecida'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{p.category || '-'}</td>
+                                            <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{p?.category || '-'}</td>
                                             <td className="px-6 py-4 font-mono">R$ {(p.current_price || 0).toFixed(2)}</td>
                                             <td className="px-6 py-4">
                                                 {(p.discount_percentage || 0) > 0 ? (
