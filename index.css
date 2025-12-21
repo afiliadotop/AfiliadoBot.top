@@ -3,13 +3,128 @@
 @tailwind utilities;
 
 @layer base {
+
+  /* Smooth theme transition */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
- 
+
+  /* CSS Custom Properties / Design Tokens */
+  :root {
+    /* Colors */
+    --color-primary: 99 102 241;
+    /* indigo-500 */
+    --color-primary-hover: 79 70 229;
+    /* indigo-600 */
+    --color-secondary: 148 163 184;
+    /* slate-400 */
+    --color-success: 34 197 94;
+    /* green-500 */
+    --color-warning: 251 191 36;
+    /* amber-400 */
+    --color-error: 239 68 68;
+    /* red-500 */
+
+    /* Background */
+    --bg-primary: 248 250 252;
+    /* slate-50 */
+    --bg-secondary: 241 245 249;
+    /* slate-100 */
+    --bg-card: 255 255 255;
+    /* white */
+
+    /* Text */
+    --text-primary: 15 23 42;
+    /* slate-900 */
+    --text-secondary: 71 85 105;
+    /* slate-600 */
+    --text-muted: 148 163 184;
+    /* slate-400 */
+
+    /* Border */
+    --border-color: 226 232 240;
+    /* slate-200 */
+
+    /* Spacing Scale (consistent 4px base) */
+    --spacing-xs: 0.25rem;
+    /* 4px */
+    --spacing-sm: 0.5rem;
+    /* 8px */
+    --spacing-md: 1rem;
+    /* 16px */
+    --spacing-lg: 1.5rem;
+    /* 24px */
+    --spacing-xl: 2rem;
+    /* 32px */
+    --spacing-2xl: 3rem;
+    /* 48px */
+
+    /* Border Radius */
+    --radius-sm: 0.375rem;
+    /* 6px */
+    --radius-md: 0.5rem;
+    /* 8px */
+    --radius-lg: 0.75rem;
+    /* 12px */
+    --radius-xl: 1rem;
+    /* 16px */
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  }
+
+  /* Dark Mode */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --bg-primary: 2 6 23;
+    /* slate-950 */
+    --bg-secondary: 15 23 42;
+    /* slate-900 */
+    --bg-card: 15 23 42;
+    /* slate-900 */
+
+    --text-primary: 248 250 252;
+    /* slate-50 */
+    --text-secondary: 203 213 225;
+    /* slate-300 */
+    --text-muted: 148 163 184;
+    /* slate-400 */
+
+    --border-color: 51 65 85;
+    /* slate-700 */
+  }
+
+  /* Animation utilities */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slideIn {
+    animation: slideIn 0.3s ease-out;
   }
 }
