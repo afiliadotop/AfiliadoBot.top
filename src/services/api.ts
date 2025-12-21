@@ -28,9 +28,9 @@ export const api = {
                 throw new Error(`API Error: ${res.status}`);
             }
             return await res.json();
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            toast.error('Erro ao enviar dados');
+            toast.error(e.message || 'Erro ao enviar dados');
             return null;
         }
     }
