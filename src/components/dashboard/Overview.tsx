@@ -129,7 +129,7 @@ export const Overview = () => {
                                 {loading ? (
                                     <Skeleton className="h-8 w-24" />
                                 ) : (
-                                    <span className="font-semibold text-2xl">{stats?.active_products.toLocaleString()}</span>
+                                    <span className="font-semibold text-2xl">{stats?.active_products?.toLocaleString()}</span>
                                 )}
                                 <span className="text-sm bg-green-100 dark:bg-green-900/30 text-green-600 px-2 py-1 rounded">Produtos Ativos</span>
                             </div>
