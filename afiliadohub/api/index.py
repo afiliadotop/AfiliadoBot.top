@@ -198,7 +198,9 @@ async def import_csv(
 
 # Import Auth Router
 from api.handlers.auth import router as auth_router
+from api.handlers.products import router as products_router
 app.include_router(auth_router, prefix="/api")
+app.include_router(products_router, prefix="/api")
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
