@@ -33,5 +33,39 @@ export const api = {
             toast.error(e.message || 'Erro ao enviar dados');
             return null;
         }
+    },
+
+    put: async <T>(endpoint: string, body: any): Promise<T | null> => {
+        try {
+            const res = await fetch(`${BASE_URL}${endpoint}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) {
+                throw new Error(`API Error: ${res.status}`);
+            }
+            return await res.json();
+        } catch (e: any) {
+            console.error(e);
+            toast.error(e.message || 'Erro ao atualizar dados');
+            return null;
+        }
+    },
+
+    delete: async <T>(endpoint: string): Promise<T | null> => {
+        try {
+            const res = await fetch(`${BASE_URL}${endpoint}`, {
+                method: 'DELETE'
+            });
+            if (!res.ok) {
+                throw new Error(`API Error: ${res.status}`);
+            }
+            return await res.json();
+        } catch (e: any) {
+            console.error(e);
+            toast.error(e.message || 'Erro ao deletar');
+            return null;
+        }
     }
 };

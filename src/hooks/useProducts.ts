@@ -76,7 +76,7 @@ export const useProducts = () => {
 
     const updateProduct = async (id: number, productData: Partial<Product>) => {
         try {
-            const response = await api.post<Product>(`/products/${id}`, productData);
+            const response = await api.put<Product>(`/products/${id}`, productData);
             if (response) {
                 toast.success('Produto atualizado!');
                 fetchProducts(); // Reload list
@@ -91,7 +91,7 @@ export const useProducts = () => {
 
     const deleteProduct = async (id: number) => {
         try {
-            const response = await api.post(`/products/${id}`, {});
+            const response = await api.delete<{ message: string }>(`/products/${id}`);
             if (response) {
                 toast.success('Produto deletado!');
                 fetchProducts(); // Reload list

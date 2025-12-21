@@ -2,13 +2,16 @@ import { useState } from "react";
 import { Search, Plus, Filter, Trash2, Edit } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
 import { PageTransition } from "../layout/PageTransition";
-import { useProducts } from "../../hooks/useProducts";
+import { useProducts, Product } from "../../hooks/useProducts";
+import { ProductModal } from "./ProductModal";
 
 export const Products = () => {
-    const { products, loading, filters, setFilters, deleteProduct } = useProducts();
+    const { products, loading, createProduct, updateProduct, deleteProduct } = useProducts();
     const [searchTerm, setSearchTerm] = useState('');
     const [storeFilter, setStoreFilter] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
     const filteredProducts = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
@@ -22,6 +25,24 @@ export const Products = () => {
         }
     };
 
+    const handleOpenModal = (product?: Product) => {
+        setEditingProduct(product || null);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setEditingProduct(null);
+    };
+
+    const handleSave = async (productData: Partial<Product>) => {
+        if (editingProduct) {
+            return await updateProduct(editingProduct.id, productData);
+        } else {
+            return await createProduct(productData);
+        }
+    };
+
     return (
         <PageTransition>
             <div className="space-y-6">
@@ -29,7 +50,10 @@ export const Products = () => {
                     <div className="pb-3 px-2 font-medium text-sm border-b-2 border-indigo-500 text-indigo-600 dark:text-indigo-400">
                         <div className="flex items-center gap-2"><Search size={16} /> Buscar Produtos</div>
                     </div>
-                    <button className="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                    >
                         <div className="flex items-center gap-2"><Plus size={16} /> Adicionar Manualmente</div>
                     </button>
                 </div>
@@ -109,8 +133,8 @@ export const Products = () => {
                                             <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-200">{p.name}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-1 rounded text-xs font-medium ${p.store === 'shopee' ? 'bg-orange-100 text-orange-700' :
-                                                        p.store === 'amazon' ? 'bg-yellow-100 text-yellow-700' :
-                                                            'bg-blue-100 text-blue-700'
+                                                    p.store === 'amazon' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-blue-100 text-blue-700'
                                                     }`}>
                                                     {p.store}
                                                 </span>
@@ -127,6 +151,7 @@ export const Products = () => {
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex gap-2 justify-end">
                                                     <button
+                                                        onClick={() => handleOpenModal(p)}
                                                         className="text-slate-400 hover:text-indigo-500 transition-colors p-2"
                                                         title="Editar"
                                                     >
@@ -149,6 +174,13 @@ export const Products = () => {
                     </div>
                 </div>
             </div>
+
+            <ProductModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                onSave={handleSave}
+                product={editingProduct}
+            />
         </PageTransition>
     );
 };
