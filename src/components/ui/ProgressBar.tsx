@@ -7,7 +7,7 @@ interface ProgressBarProps {
     className?: string;
 }
 
-export const ProgressBar: React.FC<ProgressBarProps> = ({
+export const ProgressBar: React.FC<ProgressBarProps> = React.memo(({
     progress,
     label,
     showPercentage = true,
@@ -31,4 +31,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
             </div>
         </div>
     );
-};
+});
+
+ProgressBar.displayName = 'ProgressBar';

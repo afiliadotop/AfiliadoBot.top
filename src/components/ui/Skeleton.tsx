@@ -1,15 +1,12 @@
 import React from "react";
-import { cn } from "../../utils/cn";
 
-interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
-    className?: string;
-}
-
-export const Skeleton: React.FC<SkeletonProps> = ({ className, ...props }) => {
+export const Skeleton: React.FC<{ className?: string }> = React.memo(({ className = "" }) => {
     return (
         <div
-            className={cn("animate-pulse rounded-md bg-slate-200 dark:bg-slate-800", className)}
-            {...props}
+            className={`animate-pulse bg-slate-200 dark:bg-slate-800 rounded ${className}`}
+            aria-label="Loading..."
         />
     );
-};
+});
+
+Skeleton.displayName = 'Skeleton';
