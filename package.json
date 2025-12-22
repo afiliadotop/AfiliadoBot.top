@@ -16,7 +16,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "pre-deploy": "powershell -ExecutionPolicy Bypass -File ./scripts/pre-deploy-tests.ps1"
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
