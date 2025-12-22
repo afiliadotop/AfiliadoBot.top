@@ -134,7 +134,7 @@ export const api = {
                     toast.error('Sessão expirada. Faça login novamente.');
                     localStorage.removeItem('afiliadobot_token');
                     localStorage.removeItem('afiliadobot_user');
-                    window.location.href = '/login');
+                    window.location.href = '/login';
                     return null;
                 }
 

@@ -21,13 +21,13 @@ from telegram import Bot, Update
 from telegram.ext import Application
 
 # Imports Internos
-from api.handlers.commission import CommissionSystem
-from api.handlers.competition_analysis import CompetitionAnalyzer
-from api.handlers.advanced_analytics import AdvancedAnalytics
-from api.handlers.export_reports import ReportExporter
-from api.utils.supabase_client import get_supabase_manager
-from api.utils.logger import setup_logger
-from api.utils.scheduler import scheduler
+from .handlers.commission import CommissionSystem
+from .handlers.competition_analysis import CompetitionAnalyzer
+from .handlers.advanced_analytics import AdvancedAnalytics
+from .handlers.export_reports import ReportExporter
+from .utils.supabase_client import get_supabase_manager
+from .utils.logger import setup_logger
+from .utils.scheduler import scheduler
 
 # Configuração de logging
 logger = setup_logger()
