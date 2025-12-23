@@ -162,3 +162,68 @@ async def delete_product(product_id: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== LEGACY COMPATIBILITY FUNCTIONS ====================
+# These functions are used by index.py which expects specific function names
+# independent of FastAPI routers.
+
+async def add_product(product_data: dict):
+    """Legacy wrapper for create_product"""
+    try:
+        # Convert dict to pydantic model for validation
+        product = ProductCreate(**product_data)
+        
+        # Call the logic directly (reusing router logic would be harder due to dependency injection)
+        store_result = supabase.table("stores").select("id").eq("name", product.store).execute()
+        if not store_result.data:
+            return {"success": False, "error": f"Store '{product.store}' not found"}
+        
+        store_id = store_result.data[0]["id"]
+        
+        data = product.dict()
+        data["store_id"] = store_id
+        data["created_at"] = datetime.utcnow().isoformat()
+        data["updated_at"] = datetime.utcnow().isoformat()
+        
+        result = supabase.table("products").insert(data).execute()
+        return {"success": True, "data": result.data[0]}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+async def search_products(filters: dict):
+    """Legacy wrapper for specific filter format"""
+    try:
+        query = supabase.table("products").select("*")
+        
+        if filters.get("store"):
+            query = query.eq("store", filters["store"])
+        
+        if filters.get("min_discount"):
+            query = query.gte("discount_percentage", filters["min_discount"])
+            
+        if filters.get("limit"):
+            query = query.limit(filters["limit"])
+            
+        result = query.execute()
+        return result.data  # Return list directly as expected by legacy code
+    except Exception as e:
+        return []
+
+async def get_random_product(min_discount: int = 0):
+    """Legacy wrapper for random product fetch"""
+    try:
+        query = supabase.table("products").select("*").eq("is_active", True)
+        
+        if min_discount > 0:
+            query = query.gte("discount_percentage", min_discount)
+            
+        # Get random product using random() function if db supports it or fetch sample
+        # Since Supabase via REST doesn't support random() easily in select, we fetch a batch and pick one
+        result = query.limit(20).execute()
+        
+        if result.data:
+            import random
+            return random.choice(result.data)
+        return None
+    except Exception as e:
+        return None
