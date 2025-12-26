@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Bot, Loader2, Lock, Mail, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { PageTransition } from "../components/layout/PageTransition";
 
 export const Login = () => {

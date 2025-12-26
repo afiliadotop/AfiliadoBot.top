@@ -16,7 +16,7 @@ interface AuthContextType {
     logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+export const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -80,4 +80,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     );
 };
 
-export const useAuth = () => useContext(AuthContext);
+

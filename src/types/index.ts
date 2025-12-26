@@ -21,3 +21,17 @@ export interface DashboardStats {
     monthly_revenue?: number;
     telegram_sends: number;
 }
+
+export interface User {
+    id: string | number;
+    name: string;
+    email: string;
+    role: string;
+}
+
+export interface AuthResponse {
+    access_token: string;
+    token_type: string;
+    user: User;
+}
+

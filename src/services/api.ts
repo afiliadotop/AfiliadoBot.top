@@ -34,23 +34,20 @@ export const api = {
             });
 
             if (!res.ok) {
-                const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
-                logError(error, `GET ${endpoint}`);
-
-                if (res.status === 401) {
-                    toast.error('Sessão expirada. Faça login novamente.');
-                    // Clear auth data
-                    localStorage.removeItem('afiliadobot_token');
-                    localStorage.removeItem('afiliadobot_user');
-                    window.location.href = '/login';
+                // Try to get error message from response
+                try {
+                    const errorData = await res.json();
+                    const errorMessage = errorData.detail || errorData.message || 'Erro de conexão';
+                    toast.error(errorMessage);
+                } catch {
+                    toast.error(`Erro: ${res.statusText}`);
                 }
-                return null;
             }
 
             return await res.json();
         } catch (e) {
             logError(e as Error, `GET ${endpoint}`);
-            toast.error('Erro de conexão com o servidor');
+            toast.error(`Erro de conexão: ${(e as Error).message}`);
             return null;
         }
     },
@@ -78,7 +75,8 @@ export const api = {
                 // Try to get error message from response
                 try {
                     const errorData = await res.json();
-                    toast.error(errorData.message || 'Erro ao enviar dados');
+                    const errorMessage = errorData.detail || errorData.message || 'Erro ao enviar dados';
+                    toast.error(errorMessage);
                 } catch {
                     toast.error('Erro ao enviar dados');
                 }
@@ -88,7 +86,7 @@ export const api = {
             return await res.json();
         } catch (e) {
             logError(e as Error, `POST ${endpoint}`);
-            toast.error('Erro ao enviar dados');
+            toast.error(`Erro: ${(e as Error).message}`);
             return null;
         }
     },
@@ -113,14 +111,20 @@ export const api = {
                     return null;
                 }
 
-                toast.error('Erro ao atualizar dados');
-                return null;
+                // Try to get error message from response
+                try {
+                    const errorData = await res.json();
+                    const errorMessage = errorData.detail || errorData.message || `Erro ao atualizar: ${res.statusText}`;
+                    toast.error(errorMessage);
+                } catch {
+                    toast.error(`Erro ao atualizar: ${res.statusText}`);
+                }
             }
 
             return await res.json();
         } catch (e) {
             logError(e as Error, `PUT ${endpoint}`);
-            toast.error('Erro ao atualizar dados');
+            toast.error(`Erro: ${(e as Error).message}`);
             return null;
         }
     },
@@ -144,14 +148,20 @@ export const api = {
                     return null;
                 }
 
-                toast.error('Erro ao deletar');
-                return null;
+                // Try to get error message from response
+                try {
+                    const errorData = await res.json();
+                    const errorMessage = errorData.detail || errorData.message || `Erro ao deletar: ${res.statusText}`;
+                    toast.error(errorMessage);
+                } catch {
+                    toast.error(`Erro ao deletar: ${res.statusText}`);
+                }
             }
 
             return await res.json();
         } catch (e) {
             logError(e as Error, `DELETE ${endpoint}`);
-            toast.error('Erro ao deletar');
+            toast.error(`Erro: ${(e as Error).message}`);
             return null;
         }
     }
