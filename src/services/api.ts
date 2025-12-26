@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import * as Sentry from "@sentry/react";
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -7,8 +8,13 @@ const logError = (error: Error, context?: string) => {
     if (import.meta.env.DEV) {
         console.error(context || 'API Error:', error);
     }
-    // TODO: Send to error tracking service (Sentry/LogRocket)
-    // sentry.captureException(error, { tags: { context } });
+    // Setup for Sentry
+    if (import.meta.env.PROD) {
+        Sentry.captureException(error, {
+            tags: { context },
+            extra: { url: window.location.href }
+        });
+    }
 };
 
 // Get authentication headers

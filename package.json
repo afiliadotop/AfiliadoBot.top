@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.33.0",
+    "@sentry/react": "^10.32.1",
+    "@sentry/vite-plugin": "^4.6.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.26",
     "lucide-react": "^0.561.0",

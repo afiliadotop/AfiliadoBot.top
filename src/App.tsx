@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { Toaster } from "sonner";
 import { AuthProvider } from "./context/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { SentryTest } from "./components/SentryTest";
 import { PrivateRoute } from "./components/layout/PrivateRoute";
 import { AdminRoute } from "./components/layout/AdminRoute";
 
@@ -39,6 +40,7 @@ function App() {
                 <AuthProvider>
                     <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen font-sans">
                         <Toaster position="top-right" richColors />
+                        <SentryTest />
                         <Suspense fallback={<PageLoader />}>
                             <Routes>
                                 <Route path="/" element={<LandingPage />} />
