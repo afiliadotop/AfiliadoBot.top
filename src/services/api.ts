@@ -42,6 +42,7 @@ export const api = {
                 } catch {
                     toast.error(`Erro: ${res.statusText}`);
                 }
+                return null;  // Return null on error, don't try to read body again
             }
 
             return await res.json();

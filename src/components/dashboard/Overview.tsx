@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Link as LinkIcon, Globe, Tag, Send, Activity, Zap, PieChart } from "lucide-react";
+import { Link as LinkIcon, Globe, Tag, Send, Activity, Zap, PieChart, ShoppingBag, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api } from "../../services/api";
 import { DashboardStats } from "../../types";
 import { Skeleton } from "../ui/Skeleton";
@@ -63,6 +64,47 @@ export const Overview = () => {
                         icon={<Send className="text-indigo-500" />}
                         loading={loading}
                     />
+                </div>
+
+                {/* Shopee Quick Access */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Link
+                        to="/shopee"
+                        className="group relative bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 overflow-hidden hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
+                    >
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20"></div>
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                                    <ShoppingBag className="w-6 h-6 text-white" />
+                                </div>
+                                <TrendingUp className="w-5 h-5 text-white/70 group-hover:text-white transition-colors" />
+                            </div>
+                            <h3 className="text-white text-xl font-bold mb-2">Produtos Shopee</h3>
+                            <p className="text-white/80 text-sm">
+                                Navegue pelos produtos com maior comissão e encontre as melhores ofertas
+                            </p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        to="/dashboard/shopee"
+                        className="group relative bg-gradient-to-br from-slate-800 to-slate-900 dark:from-slate-700 dark:to-slate-800 rounded-xl p-6 overflow-hidden hover:shadow-lg hover:scale-[1.02] transition-all duration-300"
+                    >
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -mr-20 -mt-20"></div>
+                        <div className="relative z-10">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="p-3 bg-orange-500/20 rounded-lg backdrop-blur-sm border border-orange-500/30">
+                                    <Activity className="w-6 h-6 text-orange-400" />
+                                </div>
+                                <span className="text-xs bg-orange-500/20 text-orange-300 px-2 py-1 rounded-full font-semibold">ADMIN</span>
+                            </div>
+                            <h3 className="text-white text-xl font-bold mb-2">Dashboard Shopee</h3>
+                            <p className="text-slate-300 text-sm">
+                                Estatísticas, controle de integração e gerenciamento avançado
+                            </p>
+                        </div>
+                    </Link>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

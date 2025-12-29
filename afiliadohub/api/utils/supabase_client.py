@@ -285,6 +285,225 @@ class SupabaseManager:
         except Exception as e:
             print(f"[ERRO] Erro ao buscar resumo: {e}")
             return {}
+    
+    # ==================== MÉTODOS PARA LOJAS ====================
+    
+    async def get_active_stores(self) -> List[Dict[str, Any]]:
+        """Retorna todas as lojas ativas do banco de dados"""
+        try:
+            response = self.client.table("stores")\
+                .select("*")\
+                .eq("is_active", True)\
+                .order("name")\
+                .execute()
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar lojas ativas: {e}")
+            return []
+    
+    async def get_store_by_name(self, store_name: str) -> Optional[Dict[str, Any]]:
+        """Busca uma loja específica por nome"""
+        try:
+            response = self.client.table("stores")\
+                .select("*")\
+                .eq("name", store_name.lower())\
+                .eq("is_active", True)\
+                .limit(1)\
+                .execute()
+            
+            return response.data[0] if response.data else None
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar loja {store_name}: {e}")
+            return None
+    
+    async def get_stores_with_product_count(self) -> List[Dict[str, Any]]:
+        """Retorna lojas com contagem de produtos ativos"""
+        try:
+            # Busca lojas
+            stores = await self.get_active_stores()
+            
+            # Para cada loja, conta produtos
+            for store in stores:
+                response = self.client.table("products")\
+                    .select("id", count="exact")\
+                    .eq("store", store["name"])\
+                    .eq("is_active", True)\
+                    .execute()
+                
+                store["product_count"] = response.count or 0
+            
+            return stores
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar lojas com contagem: {e}")
+            return []
+    
+    # ==================== MÉTODOS PARA PREFERÊNCIAS DE USUÁRIO ====================
+    
+    async def get_user_preferences(self, telegram_user_id: int) -> Optional[Dict[str, Any]]:
+        """Busca preferências de um usuário"""
+        try:
+            response = self.client.rpc(
+                "get_user_preference_summary",
+                {"p_telegram_user_id": telegram_user_id}
+            ).execute()
+            
+            if response.data:
+                return response.data
+            return {"has_preferences": False}
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar preferências do usuário: {e}")
+            return {"has_preferences": False}
+    
+    async def save_user_preference(
+        self,
+        telegram_user_id: int,
+        telegram_username: Optional[str] = None,
+        telegram_first_name: Optional[str] = None,
+        preferred_stores: Optional[List[str]] = None,
+        preferred_categories: Optional[List[str]] = None,
+        min_discount: Optional[int] = None,
+        max_price: Optional[float] = None,
+        notification_enabled: Optional[bool] = None
+    ) -> bool:
+        """Salva ou atualiza preferências de usuário"""
+        try:
+            params = {
+                "p_telegram_user_id": telegram_user_id,
+                "p_telegram_username": telegram_username,
+                "p_telegram_first_name": telegram_first_name,
+                "p_preferred_stores": preferred_stores,
+                "p_preferred_categories": preferred_categories,
+                "p_min_discount": min_discount,
+                "p_max_price": max_price,
+                "p_notification_enabled": notification_enabled
+            }
+            
+            response = self.client.rpc("upsert_user_preference", params).execute()
+            return True
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao salvar preferências: {e}")
+            return False
+    
+    async def get_recommended_products(
+        self,
+        telegram_user_id: int,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Retorna produtos recomendados baseados nas preferências do usuário"""
+        try:
+            response = self.client.rpc(
+                "get_recommended_products",
+                {
+                    "p_telegram_user_id": telegram_user_id,
+                    "p_limit": limit
+                }
+            ).execute()
+            
+            return response.data if response.data else []
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar recomendações: {e}")
+            return []
+    
+    # ==================== MÉTODOS DE BUSCA AVANÇADA ====================
+    
+    async def search_products_fulltext(
+        self,
+        search_term: str,
+        store: Optional[str] = None,
+        category: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        min_discount: Optional[int] = None,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Busca produtos usando full-text search"""
+        try:
+            # Usa a busca vetorial se disponível, senão usa ILIKE
+            query = self.client.table("products").select("*")
+            
+            # Busca por nome ou descrição
+            query = query.or_(f"name.ilike.%{search_term}%,description.ilike.%{search_term}%")
+            
+            # Aplica filtros
+            query = query.eq("is_active", True)
+            
+            if store:
+                query = query.eq("store", store)
+            if category:
+                query = query.eq("category", category)
+            if min_price is not None:
+                query = query.gte("current_price", min_price)
+            if max_price is not None:
+                query = query.lte("current_price", max_price)
+            if min_discount is not None:
+                query = query.gte("discount_percentage", min_discount)
+            
+            # Ordena por relevância (desconto primeiro)
+            query = query.order("discount_percentage", desc=True).limit(limit)
+            
+            response = query.execute()
+            return response.data if response.data else []
+            
+        except Exception as e:
+            print(f"[ERRO] Erro na busca full-text: {e}")
+            return []
+    
+    async def get_top_deals(
+        self,
+        limit: int = 10,
+        min_discount: int = 20,
+        store: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Retorna os melhores deals (maior desconto)"""
+        try:
+            query = self.client.table("products")\
+                .select("*")\
+                .eq("is_active", True)\
+                .gte("discount_percentage", min_discount)
+            
+            if store:
+                query = query.eq("store", store)
+            
+            query = query.order("discount_percentage", desc=True)\
+                .order("created_at", desc=True)\
+                .limit(limit)
+            
+            response = query.execute()
+            return response.data if response.data else []
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar top deals: {e}")
+            return []
+    
+    async def get_categories(self, store: Optional[str] = None) -> List[str]:
+        """Retorna lista de categorias únicas"""
+        try:
+            query = self.client.table("products")\
+                .select("category")\
+                .eq("is_active", True)\
+                .not_.is_("category", "null")
+            
+            if store:
+                query = query.eq("store", store)
+            
+            response = query.execute()
+            
+            # Extrai categorias únicas
+            categories = list(set([p["category"] for p in response.data if p.get("category")]))
+            categories.sort()
+            
+            return categories
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar categorias: {e}")
+            return []
 
 # Singleton para acesso global
 def get_supabase() -> Client:

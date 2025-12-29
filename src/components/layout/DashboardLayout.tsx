@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 
 export const DashboardLayout = () => {
     const { user } = useAuth();

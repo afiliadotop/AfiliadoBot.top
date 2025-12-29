@@ -23,6 +23,17 @@ class CSVImporter:
             'skipped': 0,
             'errors': 0
         }
+        # Cache de stores para lookup rápido
+        self.store_cache = self._load_stores()
+    
+    def _load_stores(self):
+        """Carrega stores do banco e cria cache name->id"""
+        try:
+            result = self.supabase.client.table("stores").select("id, name").execute()
+            return {store['name'].lower(): store['id'] for store in result.data}
+        except Exception as e:
+            logger.warning(f"Erro ao carregar stores: {e}")
+            return {}
     
     async def process_csv_upload(self, file_content: io.BytesIO, store: str, replace_existing: bool = False):
         """Processa upload de CSV em chunks para evitar estouro de memória"""
@@ -99,6 +110,12 @@ class CSVImporter:
             # Detecta loja do link
             store = detect_store(link) or default_store
             
+            # Busca store_id do cache
+            store_id = self.store_cache.get(store.lower())
+            if not store_id:
+                logger.warning(f"Store '{store}' não encontrada no cache. Pulando produto.")
+                return None
+            
             # Normaliza link
             affiliate_link = normalize_link(link)
             
@@ -118,6 +135,7 @@ class CSVImporter:
             
             # Cria objeto produto
             product = {
+                'store_id': store_id,  # FK para stores table
                 'store': store,
                 'name': name[:500],  # Limita tamanho
                 'affiliate_link': affiliate_link,

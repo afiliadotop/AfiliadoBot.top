@@ -26,6 +26,11 @@ const DashboardLayout = lazy(() => import('./components/layout/DashboardLayout')
 const Overview = lazy(() => import('./components/dashboard/Overview').then(m => ({ default: m.Overview })));
 const Products = lazy(() => import('./components/dashboard/Products').then(m => ({ default: m.Products })));
 
+// Shopee pages
+const ShopeeProducts = lazy(() => import('./pages/ShopeeProducts').then(m => ({ default: m.ShopeeProducts })));
+const ShopeeAdmin = lazy(() => import('./pages/ShopeeAdmin').then(m => ({ default: m.ShopeeAdmin })));
+const ShopeeFavorites = lazy(() => import('./pages/ShopeeFavorites').then(m => ({ default: m.ShopeeFavorites })));
+
 // Placeholders for components not yet extracted
 const Placeholder = ({ title }: { title: string }) => (
     <div className="flex items-center justify-center h-64 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-slate-400">
@@ -62,7 +67,13 @@ function App() {
                                         <Route path="telegram" element={<Placeholder title="Automação Telegram" />} />
                                         <Route path="tools" element={<Placeholder title="Ferramentas IA" />} />
                                         <Route path="settings" element={<Placeholder title="Configurações" />} />
+                                        <Route path="shopee" element={<ShopeeAdmin />} />
                                     </Route>
+                                </Route>
+
+                                {/* Shopee Public Route */}
+                                <Route path="/shopee" element={<PrivateRoute />}>
+                                    <Route index element={<ShopeeProducts />} />
                                 </Route>
 
                                 <Route path="*" element={<Navigate to="/" replace />} />

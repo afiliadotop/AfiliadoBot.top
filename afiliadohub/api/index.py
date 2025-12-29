@@ -82,10 +82,17 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite default
+        "http://127.0.0.1:5173",
+        "*"  # Allow all for development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # ==================== MODELOS PYDANTIC ====================
@@ -199,8 +206,11 @@ async def import_csv(
 # Import Auth Router
 from .handlers.auth import router as auth_router
 from .handlers.products import router as products_router
+from .handlers.shopee_api import router as shopee_router
+
 app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
+app.include_router(shopee_router, prefix="/api")
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
