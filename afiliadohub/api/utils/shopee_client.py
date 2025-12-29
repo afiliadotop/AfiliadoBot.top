@@ -694,18 +694,18 @@ def create_shopee_client(
     
     Args:
         app_id: App ID (usa SHOPEE_APP_ID do .env se não fornecido)
-        secret: Secret (usa SHOPEE_SECRET do .env se não fornecido)
+        secret: Secret (usa SHOPEE_APP_SECRET do .env se não fornecido)
     
     Returns:
         Cliente configurado
     """
     app_id = app_id or os.getenv("SHOPEE_APP_ID")
-    secret = secret or os.getenv("SHOPEE_SECRET")
+    secret = secret or os.getenv("SHOPEE_APP_SECRET")  # Alterado de SHOPEE_SECRET
     endpoint = os.getenv("SHOPEE_API_ENDPOINT", "https://open-api.affiliate.shopee.com.br/graphql")
     
     if not app_id or not secret:
         raise ValueError(
-            "SHOPEE_APP_ID e SHOPEE_SECRET devem ser configurados no .env"
+            "SHOPEE_APP_ID e SHOPEE_APP_SECRET devem ser configurados no .env"
         )
     
     return ShopeeAffiliateClient(app_id=app_id, secret=secret, endpoint=endpoint)
