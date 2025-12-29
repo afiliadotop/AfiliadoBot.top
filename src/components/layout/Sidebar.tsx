@@ -1,6 +1,6 @@
 import { LayoutDashboard, Link as LinkIcon, Upload, Send, Zap, Settings, LogOut, Bot } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../hooks/useAuth";
 
 export const Sidebar = () => {
     const navigate = useNavigate();
@@ -55,6 +55,12 @@ export const Sidebar = () => {
                     isNew
                 />
                 <SidebarItem
+                    icon={<Bot size={20} className="text-orange-500" />}
+                    label="Shopee"
+                    active={activeTab === 'shopee'}
+                    onClick={() => navigate('/dashboard/shopee')}
+                />
+                <SidebarItem
                     icon={<Settings size={20} />}
                     label="Configurações"
                     active={activeTab === 'settings'}
@@ -79,8 +85,8 @@ const SidebarItem = ({ icon, label, active, onClick, isNew }: any) => (
     <button
         onClick={onClick}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active
-                ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+            ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
     >
         {icon}

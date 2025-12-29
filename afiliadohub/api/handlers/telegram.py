@@ -65,7 +65,23 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("cupom", self.cupom_command))
         self.application.add_handler(CommandHandler("promo", self.promo_command))
         
-        # Comandos por loja
+        # Novos comandos dinâmicos
+        self.application.add_handler(CommandHandler("lojas", self.lojas_command))
+        self.application.add_handler(CommandHandler("produtos", self.produtos_command, has_args=1))  # Requer 1 argumento
+        self.application.add_handler(CommandHandler("top", self.top_command))
+        self.application.add_handler(CommandHandler("preferencias", self.preferencias_command))
+        self.application.add_handler(CommandHandler("recomendar", self.recomendar_command))
+        
+        # Comandos Shopee API
+        self.application.add_handler(CommandHandler("shopee_sync", self.shopee_sync_command))
+        self.application.add_handler(CommandHandler("shopee_stats", self.shopee_stats_command))
+        self.application.add_handler(CommandHandler("top_comissao", self.top_commission_command))
+        # TODO: Implementar shopee_link_command e shopee_ofertas_command
+        # self.application.add_handler(CommandHandler("shopee_link", self.shopee_link_command, has_args=1))
+        # self.application.add_handler(CommandHandler("shopee_ofertas", self.shopee_ofertas_command))
+        # self.application.add_handler(CommandHandler("shopee_buscar", self.shopee_buscar_command))
+        
+        # Comandos por loja (legado - mantido para compatibilidade)
         self.application.add_handler(CommandHandler("shopee", lambda u, c: self.store_command(u, c, "shopee")))
         self.application.add_handler(CommandHandler("aliexpress", lambda u, c: self.store_command(u, c, "aliexpress")))
         self.application.add_handler(CommandHandler("amazon", lambda u, c: self.store_command(u, c, "amazon")))
@@ -461,7 +477,412 @@ Ex: /buscar eletrônicos
                 "❌ Erro ao buscar promoção."
             )
     
+    # ==================== NOVOS COMANDOS DINÂMICOS ====================
+    
+    async def lojas_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /lojas - Lista todas as lojas disponíveis dinamicamente"""
+        try:
+            stores = await self.supabase.get_stores_with_product_count()
+            
+            if stores:
+                message = "🏪 *Lojas Disponíveis:*\n\n"
+                
+                for store in stores:
+                    emoji = STORE_EMOJIS.get(store["name"], "🏪")
+                    display_name = store.get("display_name", store["name"].title())
+                    product_count = store.get("product_count", 0)
+                    
+                    message += f"{emoji} *{display_name}*\n"
+                    message += f"   📦 {product_count:,} produtos disponíveis\n"
+                    message += f"   💡 Use: `/produtos {store['name']}`\n\n"
+                
+                message += "\n💬 *Dica:* Use `/produtos [loja]` para ver produtos específicos!"
+                
+                await update.message.reply_text(message, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(
+                    "😕 Nenhuma loja disponível no momento."
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /lojas: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar lojas. Tente novamente!"
+            )
+    
+    async def produtos_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /produtos [loja] - Mostra produtos de uma loja (requer argumento)"""
+        try:
+            # has_args=1 garante que context.args terá exatamente 1 elemento
+            # Se o usuário não passar argumento, o handler nem será chamado
+            store_name = context.args[0].lower()
+            
+            # Verifica se a loja existe
+            store = await self.supabase.get_store_by_name(store_name)
+            
+            if not store:
+                await update.message.reply_text(
+                    f"❌ Loja '{store_name}' não encontrada.\n"
+                    f"Use /lojas para ver lojas disponíveis."
+                )
+                return
+            
+            # Busca produtos da loja
+            filters = {
+                "store": store["name"],
+                "min_discount": 10,
+                "limit": 5
+            }
+            
+            products = await self.supabase.get_products(filters)
+            
+            if products:
+                emoji = STORE_EMOJIS.get(store["name"], "🏪")
+                await update.message.reply_text(
+                    f"{emoji} *Produtos - {store['display_name']}*\n"
+                    f"Mostrando {len(products)} produtos:",
+                    parse_mode='Markdown'
+                )
+                
+                for product in products:
+                    message = self._format_product_message(product)
+                    await update.message.reply_text(
+                        message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    
+                    # Atualiza estatísticas
+                    await self.supabase.increment_product_stats(
+                        product["id"],
+                        "telegram_send_count"
+                    )
+                    
+                    # Pequena pausa
+                    import asyncio
+                    await asyncio.sleep(0.5)
+            else:
+                emoji = STORE_EMOJIS.get(store["name"], "🏪")
+                await update.message.reply_text(
+                    f"{emoji} Nenhum produto encontrado para {store['display_name']} no momento."
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /produtos: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar produtos. Tente novamente!"
+            )
+    
+    async def top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /top - Melhores ofertas do momento"""
+        try:
+            # Busca top deals
+            top_deals = await self.supabase.get_top_deals(limit=5, min_discount=30)
+            
+            if top_deals:
+                await update.message.reply_text(
+                    "🏆 *TOP OFERTAS DO MOMENTO*\n"
+                    f"Os {len(top_deals)} melhores descontos:",
+                    parse_mode='Markdown'
+                )
+                
+                for idx, product in enumerate(top_deals, 1):
+                    message = f"*#{idx}* - " + self._format_product_message(product)
+                    await update.message.reply_text(
+                        message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    
+                    # Atualiza estatísticas
+                    await self.supabase.increment_product_stats(
+                        product["id"],
+                        "telegram_send_count"
+                    )
+                    
+                    # Pequena pausa
+                    import asyncio
+                    await asyncio.sleep(0.5)
+            else:
+                await update.message.reply_text(
+                    "😕 Nenhuma oferta especial no momento."
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /top: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar top ofertas."
+            )
+    
+    async def preferencias_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /preferencias - Gerenciar preferências do usuário"""
+        try:
+            user = update.effective_user
+            telegram_user_id = user.id
+            
+            # Busca preferências atuais
+            prefs = await self.supabase.get_user_preferences(telegram_user_id)
+            
+            if prefs.get("has_preferences"):
+                # Formata preferências
+                pref_data = prefs
+                stores = pref_data.get("preferred_stores", [])
+                categories = pref_data.get("preferred_categories", [])
+                min_discount = pref_data.get("min_discount", 0)
+                max_price = pref_data.get("max_price")
+                
+                message = f"""
+⚙️ *Suas Preferências*
+
+👤 *Usuário:* {user.first_name}
+
+🏪 *Lojas Preferidas:*
+{', '.join(stores) if stores else 'Nenhuma selecionada'}
+
+📁 *Categorias:*
+{', '.join(categories) if categories else 'Nenhuma selecionada'}
+
+💰 *Desconto Mínimo:* {min_discount}%
+💵 *Preço Máximo:* {'R$ {:.2f}'.format(max_price) if max_price else 'Sem limite'}
+
+💡 *Dica:* Use /recomendar para ver produtos personalizados!
+                """
+            else:
+                message = f"""
+⚙️ *Configurar Preferências*
+
+Olá {user.first_name}! Você ainda não configurou suas preferências.
+
+Configure suas preferências para receber recomendações personalizadas!
+
+*Como configurar:*
+1. Escolha suas lojas favoritas com /lojas
+2. Use /recomendar para ver produtos personalizados
+3. Suas preferências serão salvas automaticamente
+
+💡 *Dica:* Quanto mais você interage, melhores as recomendações!
+                """
+            
+            await update.message.reply_text(message, parse_mode='Markdown')
+            
+        except Exception as e:
+            logger.error(f"Erro no comando /preferencias: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar preferências."
+            )
+    
+    async def recomendar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /recomendar - Produtos recomendados baseados em preferências"""
+        try:
+            user = update.effective_user
+            telegram_user_id = user.id
+            
+            # Salva informações básicas do usuário
+            await self.supabase.save_user_preference(
+                telegram_user_id=telegram_user_id,
+                telegram_username=user.username,
+                telegram_first_name=user.first_name
+            )
+            
+            # Busca recomendações
+            recommendations = await self.supabase.get_recommended_products(
+                telegram_user_id=telegram_user_id,
+                limit=5
+            )
+            
+            if recommendations:
+                await update.message.reply_text(
+                    f"✨ *Recomendações para {user.first_name}*\n"
+                    f"Baseado em suas preferências:",
+                    parse_mode='Markdown'
+                )
+                
+                for product in recommendations:
+                    message = self._format_product_message(product)
+                    await update.message.reply_text(
+                        message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    
+                    # Atualiza estatísticas
+                    await self.supabase.increment_product_stats(
+                        product["id"],
+                        "telegram_send_count"
+                    )
+                    
+                    # Pequena pausa
+                    import asyncio
+                    await asyncio.sleep(0.5)
+                    
+                await update.message.reply_text(
+                    "💡 *Dica:* Use /preferencias para ajustar suas preferências!",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    f"😕 Nenhuma recomendação disponível no momento.\n"
+                    f"Continue explorando com /cupom, /top ou /lojas!"
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /recomendar: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar recomendações."
+            )
+    
+    # ==================== COMANDOS SHOPEE API ====================
+    
+    async def shopee_sync_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /shopee_sync - Sincronização manual com Shopee API"""
+        try:
+            await update.message.reply_text(
+                "🔄 *Iniciando sincronização com Shopee API...*\n"
+                "Isso pode levar alguns minutos.",
+                parse_mode='Markdown'
+            )
+            
+            # Importa o módulo aqui para evitar import circular
+            from ..utils.shopee_importer import run_shopee_import
+            
+            # Executa importação
+            result = await run_shopee_import(import_type="all", limit=50, min_commission=5.0)
+            
+            # Formata resposta
+            duration = result.get("duration", 0)
+            message = f"""
+✅ *Sincronização Concluída!*
+
+📦 *Produtos Importados:* {result.get('imported', 0)}
+🔄 *Produtos Atualizados:* {result.get('updated', 0)}
+❌ *Erros:* {result.get('errors', 0)}
+⏱️ *Duração:* {duration:.1f}s
+
+💰 *Comissão Mínima:* 5%
+            """
+            
+            if result.get('errors', 0) > 0:
+                message += f"\n⚠️ Alguns erros ocorreram. Verifique os logs."
+            
+            await update.message.reply_text(message, parse_mode='Markdown')
+            
+            # Se import successful, mostra amostra
+            if result.get('imported', 0) > 0:
+                await update.message.reply_text(
+                    "💡 Use /top_comissao para ver produtos com melhor comissão!",
+                    parse_mode='Markdown'
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /shopee_sync: {e}")
+            await update.message.reply_text(
+                f"❌ Erro na sincronização: {str(e)}\n"
+                "Verifique as credenciais no .env"
+            )
+    
+    async def shopee_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /shopee_stats - Estatísticas dos produtos Shopee"""
+        try:
+            # Busca estatísticas
+            response = self.supabase.client.rpc("get_shopee_statistics").execute()
+            
+            if response.data:
+                stats = response.data
+                
+                last_sync = stats.get('last_sync')
+                if last_sync:
+                    last_sync_str = datetime.fromisoformat(last_sync.replace('Z', '+00:00')).strftime('%d/%m/%Y %H:%M')
+                else:
+                    last_sync_str = "Nunca"
+                
+                message = f"""
+📊 *Estatísticas Shopee*
+
+📦 *Produtos Totais:* {stats.get('total_products', 0):,}
+✅ *Produtos Ativos:* {stats.get('active_products', 0):,}
+💰 *Comissão Média:* {stats.get('average_commission', 0):.2f}%
+🛒 *Total de Vendas:* {stats.get('total_sales', 0):,}
+
+🔄 *Última Sincronização:* {last_sync_str}
+⚙️ *Sync Automático:* {'Ativado' if stats.get('sync_enabled') else 'Desativado'}
+
+💡 *Comandos:*
+/shopee_sync - Sincronizar manualmente
+/top_comissao - Ver melhores comissões
+                """
+                
+                await update.message.reply_text(message, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(
+                    "📊 Nenhuma estatística disponível ainda.\n"
+                    "Use /shopee_sync para importar produtos."
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /shopee_stats: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar estatísticas Shopee."
+            )
+    
+    async def top_commission_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /top_comissao - Produtos com maior comissão"""
+        try:
+            # Busca produtos
+            response = self.supabase.client.rpc(
+                "get_top_commission_products",
+                {"p_limit": 5}
+            ).execute()
+            
+            products = response.data
+            
+            if products:
+                await update.message.reply_text(
+                    "💰 *TOP 5 - Maiores Comissões Shopee*",
+                    parse_mode='Markdown'
+                )
+                
+                for idx, product in enumerate(products, 1):
+                    commission_rate = product.get('commission_rate', 0)
+                    commission_amount = product.get('commission_amount', 0)
+                    
+                    message = f"*#{idx} - {commission_rate}% de comissão*\n"
+                    message += f"💵 R$ {commission_amount:.2f} por venda\n\n"
+                    message += self._format_product_message(product)
+                    
+                    await update.message.reply_text(
+                        message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=False
+                    )
+                    
+                    # Atualiza estatísticas
+                    await self.supabase.increment_product_stats(
+                        product["id"],
+                        "telegram_send_count"
+                    )
+                    
+                    # Pequena pausa
+                    import asyncio
+                    await asyncio.sleep(0.5)
+                    
+                await update.message.reply_text(
+                    "✨ *Dica:* Use /shopee_sync para atualizar produtos!",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "😕 Nenhum produto Shopee encontrado.\n"
+                    "Use /shopee_sync para importar produtos da API."
+                )
+                
+        except Exception as e:
+            logger.error(f"Erro no comando /top_comissao: {e}")
+            await update.message.reply_text(
+                "❌ Erro ao buscar produtos com maior comissão."
+            )
+    
     # ==================== HANDLERS AUXILIARES ====================
+
     
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para mensagens de texto"""

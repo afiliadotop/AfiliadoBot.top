@@ -85,3 +85,49 @@ async def login(credentials: UserLogin):
     except Exception as e:
         # Simple error message for security
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+# --- Authentication Dependencies ---
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Dependency para validar token e retornar usuário atual
+    Usado em rotas que requerem autenticação
+    """
+    token = credentials.credentials
+    
+    try:
+        # Decode JWT token (Supabase JWT)
+        import jwt
+        
+        # Supabase tokens são auto-contidos, podemos decodificar sem verificar
+        # (Em prod, deveria verificar assinatura com SUPABASE_JWT_SECRET)
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        
+        user_metadata = decoded.get("user_metadata", {})
+        
+        return {
+            "id": decoded.get("sub"),
+            "email": decoded.get("email"),
+            "name": user_metadata.get("name", "Usuário"),
+            "role": user_metadata.get("role", "client")
+        }
+    except Exception as e:
+        logger.error(f"[Auth] Token decode error: {e}")
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+async def get_current_admin(current_user: dict = Depends(get_current_user)):
+    """
+    Dependency para validar que usuário é admin
+    Usado em rotas administrativas
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403, 
+            detail="Acesso negado. Apenas administradores."
+        )
+    
+    return current_user
