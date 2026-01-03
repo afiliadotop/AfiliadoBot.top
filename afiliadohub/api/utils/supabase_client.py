@@ -198,7 +198,7 @@ class SupabaseManager:
                 "increment_stat",
                 {
                     "p_product_id": product_id,
-                    "p_stat_type": stat_type,
+                    "p_field": stat_type,  # Corrigido: schema.sql usa p_field, não p_stat_type
                     "p_increment": increment
                 }
             ).execute()
@@ -504,6 +504,70 @@ class SupabaseManager:
         except Exception as e:
             print(f"[ERRO] Erro ao buscar categorias: {e}")
             return []
+    
+    async def get_products_for_telegram(self, limit: int = 5, min_discount: int = 0) -> List[Dict[str, Any]]:
+        """Busca produtos para enviar no Telegram, priorizando os que nunca foram enviados ou foram enviados há mais tempo"""
+        try:
+            # Query que faz LEFT JOIN com product_stats e ordena por last_sent (NULL primeiro)
+            query = """
+            SELECT p.*, COALESCE(ps.last_sent, '1970-01-01'::timestamptz) as last_sent_at, COALESCE(ps.telegram_send_count, 0) as send_count
+            FROM products p
+            LEFT JOIN product_stats ps ON p.id = ps.product_id
+            WHERE p.is_active = TRUE
+            AND (p.discount_percentage >= %(min_discount)s OR %(min_discount)s = 0)
+            AND p.image_url IS NOT NULL
+            ORDER BY last_sent_at ASC, p.discount_percentage DESC NULLS LAST
+            LIMIT %(limit)s
+            """
+            
+            # Execute raw SQL via RPC (ou use a biblioteca diretamente se preferir)
+            # Como o Supabase não suporta raw SQL direto na lib Python facilmente, vamos usar a query builder:
+            
+            # Alternativa: usar query builder do Supabase
+            response = self.client.table("products")\
+                .select("*, product_stats(last_sent, telegram_send_count)")\
+                .eq("is_active", True)\
+                .not_.is_("image_url", "null")
+            
+            if min_discount > 0:
+                response = response.gte("discount_percentage", min_discount)
+            
+            # Infelizmente não conseguimos ordenar por campos de join facilmente, então vamos buscar tudo e ordenar em Python
+            response = response.limit(100).execute()
+            
+            if not response.data:
+                return []
+            
+            # Ordenar em Python por last_sent (NULL primeiro)
+            products = response.data
+            for p in products:
+                stats = p.get('product_stats', [])
+                if stats and len(stats) > 0:
+                    p['last_sent_at'] = stats[0].get('last_sent', '1970-01-01')
+                    p['send_count'] = stats[0].get('telegram_send_count', 0)
+                else:
+                    p['last_sent_at'] = '1970-01-01'
+                    p['send_count'] = 0
+            
+            # Ordenar: nunca enviados primeiro, depois por data mais antiga, depois por desconto
+            products.sort(key=lambda x: (x['last_sent_at'], -x.get('discount_percentage', 0)))
+            
+            return products[:limit]
+            
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar produtos para Telegram: {e}")
+            # Fallback: retorna produtos recentes com imagem
+            try:
+                response = self.client.table("products")\
+                    .select("*")\
+                    .eq("is_active", True)\
+                    .not_.is_("image_url", "null")\
+                    .order("created_at", desc=True)\
+                    .limit(limit)\
+                    .execute()
+                return response.data if response.data else []
+            except:
+                return []
 
 # Singleton para acesso global
 def get_supabase() -> Client:

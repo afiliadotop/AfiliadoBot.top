@@ -33,12 +33,12 @@ from .utils.scheduler import scheduler
 logger = setup_logger()
 
 # Configurações de Ambiente
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CRON_TOKEN = os.getenv("CRON_TOKEN")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 # Variáveis Globais
-bot = Bot(BOT_TOKEN) if BOT_TOKEN else None
+bot = Bot(TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
 telegram_app = None
 
 # Security
@@ -56,10 +56,22 @@ async def lifespan(app: FastAPI):
         await scheduler.start()
 
     # Inicializa Bot Telegram
-    if BOT_TOKEN:
+    if TELEGRAM_BOT_TOKEN:
         from .handlers.telegram import setup_telegram_handlers
         global telegram_app
-        telegram_app = await setup_telegram_handlers(BOT_TOKEN)
+        telegram_app = await setup_telegram_handlers(TELEGRAM_BOT_TOKEN)
+        
+        # Configura webhook para produção (Render)
+        render_url = os.getenv("RENDER_EXTERNAL_URL")
+        if render_url:
+            webhook_url = f"{render_url}/api/telegram/webhook"
+            try:
+                await bot.set_webhook(webhook_url)
+                logger.info(f"[TELEGRAM] Webhook configurado: {webhook_url}")
+            except Exception as e:
+                logger.error(f"[TELEGRAM] Erro ao configurar webhook: {e}")
+        else:
+            logger.info("[TELEGRAM] Modo local - sem webhook")
         
         # Se estiver em modo Polling (VPS local), descomente abaixo:
         # asyncio.create_task(telegram_app.updater.start_polling())
@@ -68,7 +80,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # 2. Shutdown
-    logger.info("🛑 Encerrando serviços...")
+    logger.info("[SHUTDOWN] Encerrando servicos...")
     await scheduler.stop()
 
 # Inicialização do FastAPI
@@ -179,6 +191,27 @@ async def get_products(
     from .handlers.products import search_products
     filters = {"store": store, "limit": limit, "min_discount": min_discount}
     return await search_products(filters)
+
+# ==================== TELEGRAM WEBHOOK ====================
+
+@app.post("/api/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Recebe updates do Telegram via webhook"""
+    try:
+        if not telegram_app:
+            return {"ok": False, "error": "Bot not initialized"}
+        
+        update_data = await request.json()
+        
+        # Processar update do Telegram
+        from telegram import Update
+        update = Update.de_json(update_data, bot)
+        await telegram_app.process_update(update)
+        
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"[TELEGRAM WEBHOOK] Erro: {e}")
+        return {"ok": False, "error": str(e)}
 
 # ==================== IMPORTAÇÃO CSV ====================
 
