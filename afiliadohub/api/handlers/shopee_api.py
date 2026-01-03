@@ -530,9 +530,16 @@ async def send_product_to_telegram(
         # Envia para Telegram via API
         telegram_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
         
+        # Valida URL da imagem
+        image_url = product.get("imageUrl", "")
+        
+        # Garante que a URL seja HTTPS
+        if image_url.startswith("http://"):
+            image_url = image_url.replace("http://", "https://", 1)
+        
         payload = {
             "chat_id": channel_id,
-            "photo": product.get("imageUrl", ""),
+            "photo": image_url,
             "caption": message,
             "parse_mode": "HTML",
             "reply_markup": {
@@ -545,18 +552,58 @@ async def send_product_to_telegram(
             }
         }
         
-        async with httpx.AsyncClient() as http_client:
-            response = await http_client.post(telegram_url, json=payload, timeout=10.0)
-            response.raise_for_status()
+        try:
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(telegram_url, json=payload, timeout=10.0)
+                
+                if response.status_code == 200:
+                    logger.info(f"[Telegram] Produto {item_id} enviado com sucesso para {channel_id}")
+                    
+                    return {
+                        "success": True,
+                        "message": "Produto enviado para o Telegram com sucesso!",
+                        "product_name": product['productName'],
+                        "sent_at": datetime.now().isoformat()
+                    }
+                else:
+                    # Se falhar com foto, tenta enviar só texto
+                    logger.warning(f"[Telegram] Falha ao enviar foto, tentando enviar apenas texto: {response.text}")
+                    
+                    # Fallback: envia como mensagem de texto
+                    text_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    text_payload = {
+                        "chat_id": channel_id,
+                        "text": message,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": False,
+                        "reply_markup": {
+                            "inline_keyboard": [[
+                                {
+                                    "text": "🛒 COMPRAR AGORA COM DESCONTO!",
+                                    "url": product.get('offerLink', '#')
+                                }
+                            ]]
+                        }
+                    }
+                    
+                    text_response = await http_client.post(text_url, json=text_payload, timeout=10.0)
+                    text_response.raise_for_status()
+                    
+                    logger.info(f"[Telegram] Produto {item_id} enviado como texto para {channel_id}")
+                    
+                    return {
+                        "success": True,
+                        "message": "Produto enviado para o Telegram (sem imagem)",
+                        "product_name": product['productName'],
+                        "sent_at": datetime.now().isoformat()
+                    }
         
-        logger.info(f"[Telegram] Produto {item_id} enviado com sucesso para {channel_id}")
-        
-        return {
-            "success": True,
-            "message": "Produto enviado para o Telegram com sucesso!",
-            "product_name": product['productName'],
-            "sent_at": datetime.now().isoformat()
-        }
+        except httpx.HTTPError as e:
+            logger.error(f"[Telegram] Erro HTTP ao enviar: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao enviar para Telegram: {str(e)}"
+            )
         
     except HTTPException:
         raise

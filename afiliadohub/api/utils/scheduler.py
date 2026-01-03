@@ -22,7 +22,7 @@ class Scheduler:
             return
         
         self.running = True
-        logger.info("🔄 Agendador iniciado")
+        logger.info("[SCHEDULER] Agendador iniciado")
         
         # Agenda tarefas padrão
         await self.schedule_default_tasks()
@@ -128,7 +128,7 @@ class Scheduler:
         """Executa uma tarefa"""
         try:
             task = self.tasks[task_id]
-            logger.info(f"▶️ Executando tarefa: {task_id}")
+            logger.info(f"[RUN] Executando tarefa: {task_id}")
             
             # Atualiza timestamps
             task["last_run"] = datetime.now()
@@ -151,7 +151,7 @@ class Scheduler:
             from api.utils.supabase_client import get_supabase_manager
             supabase = get_supabase_manager()
             
-            logger.info("🔍 Verificando preços...")
+            logger.info("[PRICE CHECK] Verificando precos...")
             
             # Busca produtos que precisam de verificação
             week_ago = (datetime.now() - timedelta(days=7)).isoformat()
@@ -166,10 +166,10 @@ class Scheduler:
             products = response.data if response.data else []
             
             if not products:
-                logger.info("📭 Nenhum produto precisa de verificação")
+                logger.info("[INFO] Nenhum produto precisa de verificacao")
                 return
             
-            logger.info(f"📦 Verificando preços de {len(products)} produtos")
+            logger.info(f"[INFO] Verificando precos de {len(products)} produtos")
             
             # Aqui você implementaria a lógica real de verificação de preços
             # Por enquanto, apenas atualiza o timestamp
@@ -190,7 +190,7 @@ class Scheduler:
             from api.utils.supabase_client import get_supabase_manager
             supabase = get_supabase_manager()
             
-            logger.info("🧹 Limpando produtos antigos...")
+            logger.info("[CLEANUP] Limpando produtos antigos...")
             
             # Remove produtos inativos com mais de 30 dias
             month_ago = (datetime.now() - timedelta(days=30)).isoformat()
@@ -203,7 +203,7 @@ class Scheduler:
             
             deleted_count = len(response.data) if response.data else 0
             
-            logger.info(f"🗑️ {deleted_count} produtos antigos removidos")
+            logger.info(f"[CLEANUP] {deleted_count} produtos antigos removidos")
             
         except Exception as e:
             logger.error(f"Erro na limpeza de produtos: {e}")
@@ -211,7 +211,7 @@ class Scheduler:
     async def create_backup(self):
         """Cria backup do banco de dados"""
         try:
-            logger.info("💾 Criando backup...")
+            logger.info("[BACKUP] Criando backup...")
             
             # Aqui você implementaria a lógica de backup
             # Por enquanto, apenas registra no log
@@ -228,13 +228,13 @@ class Scheduler:
         for task_id in list(self.tasks.keys()):
             await self.remove_task(task_id)
         
-        logger.info("🛑 Agendador parado")
+        logger.info("[SCHEDULER] Agendador parado")
     
     async def remove_task(self, task_id: str):
         """Remove uma tarefa agendada"""
         if task_id in self.tasks:
             del self.tasks[task_id]
-            logger.info(f"🗑️ Tarefa {task_id} removida")
+            logger.info(f"[SCHEDULER] Tarefa {task_id} removida")
     
     async def get_task_status(self) -> Dict[str, Any]:
         """Retorna status de todas as tarefas"""
