@@ -373,7 +373,7 @@ async def get_sync_status(
         try:
             result = supabase.client.table('shopee_sync_log')\
                 .select('*')\
-                .order('created_at', desc=True)\
+                .order('started_at', desc=True)\  # Corrigido: campo correto é started_at
                 .limit(1)\
                 .execute()
             
@@ -403,7 +403,7 @@ async def get_top_commission_products(
         # Try RPC function first
         try:
             result = supabase.client.rpc('get_top_commission_products', {
-                'limit_count': limit
+                'p_limit': limit  # Corrigido: nome do parâmetro correto
             }).execute()
             
             if result.data:
