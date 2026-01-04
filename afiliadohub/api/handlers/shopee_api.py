@@ -371,9 +371,10 @@ async def get_sync_status(
         
         # Try to get latest sync log
         try:
+            # Corrigido: campo correto é started_at (não created_at)
             result = supabase.client.table('shopee_sync_log')\
                 .select('*')\
-                .order('started_at', desc=True)\  # Corrigido: campo correto é started_at
+                .order('started_at', desc=True)\
                 .limit(1)\
                 .execute()
             
