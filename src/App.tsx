@@ -31,6 +31,10 @@ const ShopeeProducts = lazy(() => import('./pages/ShopeeProducts').then(m => ({ 
 const ShopeeAdmin = lazy(() => import('./pages/ShopeeAdmin').then(m => ({ default: m.ShopeeAdmin })));
 const ShopeeFavorites = lazy(() => import('./pages/ShopeeFavorites').then(m => ({ default: m.ShopeeFavorites })));
 
+// SaaS pages
+const Pricing = lazy(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
+const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+
 // Placeholders for components not yet extracted
 const Placeholder = ({ title }: { title: string }) => (
     <div className="flex items-center justify-center h-64 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-slate-400">
@@ -51,6 +55,7 @@ function App() {
                                 <Route path="/" element={<LandingPage />} />
                                 <Route path="/login" element={<Login />} />
                                 <Route path="/register" element={<Register />} />
+                                <Route path="/pricing" element={<Pricing />} />
 
                                 {/* Client Route */}
                                 <Route path="/client" element={<PrivateRoute />}>
@@ -68,6 +73,7 @@ function App() {
                                         <Route path="tools" element={<Placeholder title="Ferramentas IA" />} />
                                         <Route path="settings" element={<Placeholder title="Configurações" />} />
                                         <Route path="shopee" element={<ShopeeAdmin />} />
+                                        <Route path="profile" element={<Profile />} />
                                     </Route>
                                 </Route>
 
