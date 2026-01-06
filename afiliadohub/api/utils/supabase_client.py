@@ -203,6 +203,15 @@ class SupabaseManager:
                 }
             ).execute()
             
+            # CRÍTICO: Se for telegram_send_count, atualiza last_sent também
+            if stat_type == "telegram_send_count":
+                from datetime import datetime
+                self.client.table("product_stats")\
+                    .update({"last_sent": datetime.utcnow().isoformat()})\
+                    .eq("product_id", product_id)\
+                    .execute()
+                print(f"[INFO] Produto {product_id} - last_sent atualizado para rotação")
+            
             return True
         except Exception as e:
             print(f"[ERRO] Erro ao incrementar estatística: {e}")
