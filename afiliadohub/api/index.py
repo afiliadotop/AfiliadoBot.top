@@ -240,10 +240,53 @@ async def import_csv(
 from .handlers.auth import router as auth_router
 from .handlers.products import router as products_router
 from .handlers.shopee_api import router as shopee_router
+from .handlers.mercadolivre_api import router as mercadolivre_router
+
+# Mercado Livre OAuth Callback (temporário para obter tokens)
+@app.get("/api/ml/callback")
+async def ml_oauth_callback(code: str = Query(...)):
+    """Callback OAuth do Mercado Livre - Obter Access Token"""
+    import httpx
+    
+    ML_APP_ID = os.getenv("ML_APP_ID")
+    ML_SECRET_KEY = os.getenv("ML_SECRET_KEY")
+    REDIRECT_URI = "https://afiliadobot.top/api/ml/callback"
+    
+    if not ML_APP_ID or not ML_SECRET_KEY:
+        return {"error": "ML_APP_ID e ML_SECRET_KEY não configurados no .env"}
+    
+    # Trocar CODE por ACCESS_TOKEN
+    url = "https://api.mercadolibre.com/oauth/token"
+    payload = {
+        "grant_type": "authorization_code",
+        "client_id": ML_APP_ID,
+        "client_secret": ML_SECRET_KEY,
+        "redirect_uri": REDIRECT_URI,
+        "code": code
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
+        
+        return {
+            "success": True,
+            "access_token": data.get("access_token"),
+            "refresh_token": data.get("refresh_token"),
+            "expires_in": data.get("expires_in"),
+            "token_type": data.get("token_type"),
+            "instructions": "Copie o access_token e refresh_token e adicione ao .env como ML_ACCESS_TOKEN e ML_REFRESH_TOKEN"
+        }
+    except Exception as e:
+        logger.error(f"ML OAuth error: {e}")
+        return {"error": str(e), "success": False}
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
 app.include_router(shopee_router, prefix="/api")
+app.include_router(mercadolivre_router, prefix="/api")
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
