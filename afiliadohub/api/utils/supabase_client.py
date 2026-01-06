@@ -194,11 +194,12 @@ class SupabaseManager:
         """Incrementa estatísticas de um produto"""
         try:
             # Usa RPC para incremento atômico
+            # IMPORTANTE: Converter para int para evitar ambiguidade UUID vs BIGINT
             response = self.client.rpc(
                 "increment_stat",
                 {
-                    "p_product_id": product_id,
-                    "p_field": stat_type,  # Corrigido: schema.sql usa p_field, não p_stat_type
+                    "p_product_id": int(product_id),  # Garantir que é int/bigint
+                    "p_field": stat_type,
                     "p_increment": increment
                 }
             ).execute()
@@ -208,7 +209,7 @@ class SupabaseManager:
                 from datetime import datetime
                 self.client.table("product_stats")\
                     .update({"last_sent": datetime.utcnow().isoformat()})\
-                    .eq("product_id", product_id)\
+                    .eq("product_id", int(product_id))\
                     .execute()
                 print(f"[INFO] Produto {product_id} - last_sent atualizado para rotação")
             
@@ -559,7 +560,7 @@ class SupabaseManager:
                     p['send_count'] = 0
             
             # Ordenar: nunca enviados primeiro, depois por data mais antiga, depois por desconto
-            products.sort(key=lambda x: (x['last_sent_at'], -x.get('discount_percentage', 0)))
+            products.sort(key=lambda x: (x['last_sent_at'], -(x.get('discount_percentage') or 0)))
             
             return products[:limit]
             
