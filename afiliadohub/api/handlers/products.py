@@ -1,8 +1,12 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
+import httpx
+import re
+import logging
 from ..utils.supabase_client import get_supabase_manager
+from .auth import get_current_user
 
 # Get supabase instance
 supabase = get_supabase_manager().client
@@ -45,6 +49,12 @@ class ProductUpdate(BaseModel):
     tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
     is_featured: Optional[bool] = None
+
+class MLProductAdd(BaseModel):
+    product_url: str
+    category: str
+
+logger = logging.getLogger(__name__)
 
 @router.get("/products")
 async def get_products(
@@ -161,6 +171,107 @@ async def delete_product(product_id: int):
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/add-ml-product")
+async def add_ml_product(
+    request: MLProductAdd,
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    Adiciona produto Mercado Livre manualmente
+    Usa OAuth token para buscar info do produto via ML API
+    """
+    try:
+        # 1. Validar e extrair item_id
+        match = re.search(r'MLB-(\d+)', request.product_url)
+        if not match:
+            raise HTTPException(
+                status_code=400, 
+                detail="URL inválida. Use formato: https://produto.mercadolivre.com.br/MLB-xxxxx"
+            )
+        
+        item_id = match.group(1)
+        logger.info(f"[ML Add] Adicionando produto MLB-{item_id}")
+        
+        # 2. Buscar info do produto via ML API (COM TOKEN OAuth)
+        from ..utils.ml_token_manager import get_ml_token
+        
+        token = await get_ml_token()
+        ml_url = f"https://api.mercadolibre.com/items/MLB-{item_id}"
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(ml_url, headers=headers)
+            response.raise_for_status()
+            product_info = response.json()
+        
+        logger.info(f"[ML Add] Produto encontrado: {product_info.get('title', 'N/A')[:50]}")
+        
+        # 3. Gerar link de afiliado
+        from .mercadolivre_api import generate_affiliate_link
+        affiliate_link = generate_affiliate_link(item_id)
+        
+        # 4. Calcular desconto
+        discount = 0
+        if "original_price" in product_info and product_info["original_price"]:
+            try:
+                discount = int((
+                    (product_info["original_price"] - product_info["price"]) / 
+                    product_info["original_price"]
+                ) * 100)
+            except:
+                discount = 0
+        
+        # 5. Preparar dados do produto
+        product_data = {
+            "store": "mercado_livre",
+            "name": product_info["title"][:255],
+            "description": product_info.get("subtitle", "")[:500] if product_info.get("subtitle") else None,
+            "affiliate_link": affiliate_link,
+            "current_price": float(product_info["price"]),
+            "original_price": float(product_info.get("original_price")) if product_info.get("original_price") else None,
+            "discount_percentage": discount,
+            "category": request.category,
+            "image_url": product_info.get("pictures", [{}])[0].get("url") if product_info.get("pictures") else None,
+            "is_active": True,
+            "is_featured": discount >= 30,
+            "source": "mercadolivre_manual",
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+        
+        # 6. Buscar store_id
+        store_result = supabase.table("stores").select("id").eq("name", "mercado_livre").execute()
+        if store_result.data:
+            product_data["store_id"] = store_result.data[0]["id"]
+        
+        # 7. Salvar no banco
+        result = supabase.table("products").insert(product_data).execute()
+        
+        logger.info(f"[ML Add] Produto salvo com sucesso! ID: {result.data[0].get('id')}")
+        
+        return {
+            "success": True,
+            "product": result.data[0],
+            "affiliate_link": affiliate_link,
+            "message": f"Produto '{product_info['title'][:50]}...' adicionado com sucesso!"
+        }
+        
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Produto não encontrado no Mercado Livre")
+        logger.error(f"[ML Add] Erro HTTP {e.response.status_code}: {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar produto: {e}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ML Add] Erro: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== LEGACY COMPATIBILITY FUNCTIONS ====================

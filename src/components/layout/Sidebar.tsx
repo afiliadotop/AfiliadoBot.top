@@ -1,4 +1,4 @@
-import { LayoutDashboard, Link as LinkIcon, Upload, Send, Zap, Settings, LogOut, Bot } from "lucide-react";
+import { LayoutDashboard, Link as LinkIcon, Upload, Send, Zap, Settings, LogOut, Bot, Database } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -57,8 +57,14 @@ export const Sidebar = () => {
                 <SidebarItem
                     icon={<Bot size={20} className="text-orange-500" />}
                     label="Shopee"
-                    active={activeTab === 'shopee'}
+                    active={activeTab === 'shopee' && !location.pathname.includes('feeds')}
                     onClick={() => navigate('/dashboard/shopee')}
+                />
+                <SidebarItem
+                    icon={<Database size={20} className="text-blue-500" />}
+                    label="Status Feeds"
+                    active={location.pathname.includes('shopee/feeds')}
+                    onClick={() => navigate('/dashboard/shopee/feeds')}
                 />
                 <SidebarItem
                     icon={<Settings size={20} />}

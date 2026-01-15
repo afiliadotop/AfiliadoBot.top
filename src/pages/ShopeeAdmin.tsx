@@ -16,6 +16,10 @@ export const ShopeeAdmin = () => {
     const [rateLimitStatus, setRateLimitStatus] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
+    const [topSales, setTopSales] = useState<ShopeeProduct[]>([]);
+    const [topPopular, setTopPopular] = useState<ShopeeProduct[]>([]);
+    const [sendingId, setSendingId] = useState<number | null>(null);
+
     // Redirect if not admin
     if (user?.role !== 'admin') {
         return <Navigate to="/shopee" replace />;
@@ -29,21 +33,39 @@ export const ShopeeAdmin = () => {
         setLoading(true);
 
         try {
-            const [statsData, syncData, topData, rateLimitData] = await Promise.all([
+            const [statsData, syncData, topCommData, topSalesData, topPopularData, rateLimitData] = await Promise.all([
                 shopeeService.getStats(),
                 shopeeService.getSyncStatus(),
                 shopeeService.getTopCommission(10),
+                shopeeService.getTopSales(10),
+                shopeeService.getTopPopular(10),
                 shopeeService.getRateLimitStatus()
             ]);
 
             if (statsData) setStats(statsData);
             if (syncData) setSyncStatus(syncData);
-            if (topData) setTopProducts(topData.products);
+            if (topCommData) setTopProducts(topCommData.products);
+            if (topSalesData) setTopSales(topSalesData.products);
+            if (topPopularData) setTopPopular(topPopularData.products);
             if (rateLimitData) setRateLimitStatus(rateLimitData);
         } catch (error) {
             console.error("Error loading admin data:", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSendToTelegram = async (product: ShopeeProduct) => {
+        setSendingId(product.itemId);
+        try {
+            const result = await shopeeService.sendProductToTelegram(product.itemId, product);
+            if (result?.success) {
+                alert(`Produto enviado com sucesso!\n${result.message}`);
+            }
+        } catch (error: any) {
+            alert(`Erro ao enviar: ${error.message || 'Erro desconhecido'}`);
+        } finally {
+            setSendingId(null);
         }
     };
 
@@ -185,67 +207,187 @@ export const ShopeeAdmin = () => {
                         </div>
                     )}
 
-                    {/* Top Commission Products */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                        <h2 className="text-lg font-semibold mb-4">
-                            🔥 Top 10 - Maior Comissão
-                        </h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Top Commission Products */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h2 className="text-lg font-semibold mb-4 text-orange-400">
+                                🔥 Top 10 - Maior Comissão
+                            </h2>
+                            <ProductsList
+                                products={topProducts}
+                                type="commission"
+                                onSendTelegram={handleSendToTelegram}
+                                sendingId={sendingId}
+                            />
+                        </div>
 
-                        {topProducts.length > 0 ? (
-                            <div className="space-y-3">
-                                {topProducts.map((product, index) => {
-                                    const commission = product.commissionRate ? parseFloat(product.commissionRate) * 100 : 0;
-                                    const commissionAmount = product.commissionAmount ? parseFloat(product.commissionAmount) : 0;
+                        {/* Top Sales Products */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h2 className="text-lg font-semibold mb-4 text-blue-400">
+                                🛍️ Top 10 - Mais Vendidos
+                            </h2>
+                            <ProductsList
+                                products={topSales}
+                                type="sales"
+                                onSendTelegram={handleSendToTelegram}
+                                sendingId={sendingId}
+                            />
+                        </div>
 
-                                    return (
-                                        <div
-                                            key={product.itemId}
-                                            className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors"
-                                        >
-                                            <div className={`text-2xl font-bold ${index === 0 ? 'text-yellow-400' :
-                                                index === 1 ? 'text-slate-300' :
-                                                    index === 2 ? 'text-orange-400' :
-                                                        'text-slate-500'
-                                                }`}>
-                                                #{index + 1}
-                                            </div>
-
-                                            <img
-                                                src={product.imageUrl}
-                                                alt={product.productName}
-                                                className="w-12 h-12 rounded object-cover"
-                                            />
-
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-medium truncate">
-                                                    {product.productName}
-                                                </div>
-                                                <div className="text-xs text-slate-400">
-                                                    R$ {product.priceMin} • {(product.sales || 0).toLocaleString()} vendidos
-                                                </div>
-                                            </div>
-
-                                            <div className="text-right">
-                                                <div className="text-lg font-bold text-green-400">
-                                                    {commission.toFixed(1)}%
-                                                </div>
-                                                <div className="text-xs text-green-300">
-                                                    R$ {commissionAmount.toFixed(2)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                        {/* Most Popular/Searched Products */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 lg:col-span-2">
+                            <h2 className="text-lg font-semibold mb-4 text-purple-400">
+                                🔍 Top 10 - Mais Pesquisados / Populares
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <ProductsList
+                                    products={topPopular}
+                                    type="popular"
+                                    onSendTelegram={handleSendToTelegram}
+                                    sendingId={sendingId}
+                                    isGrid
+                                />
                             </div>
-                        ) : (
-                            <div className="text-center py-8 text-slate-400">
-                                Nenhum produto encontrado
-                            </div>
-                        )}
+                        </div>
                     </div>
                 </div>
             </div>
         </PageTransition>
+    );
+};
+
+// Reusable Products List Component
+const ProductsList = ({ products, type, onSendTelegram, sendingId, isGrid = false }: any) => {
+    if (!products || products.length === 0) {
+        return (
+            <div className="text-center py-8 text-slate-400 bg-slate-800/20 rounded-lg">
+                Nenhum produto encontrado
+            </div>
+        );
+    }
+
+    const Container = isGrid ? React.Fragment : 'div';
+    const Wrapper = isGrid ? 'contents' : 'div';
+
+    // If grid, we just map directly. If list (default), we wrap in a div with space-y-3
+    if (isGrid) {
+        return (
+            <>
+                {products.map((product: any, index: number) => (
+                    <ProductItem
+                        key={product.itemId}
+                        product={product}
+                        index={index}
+                        type={type}
+                        onSendTelegram={onSendTelegram}
+                        sendingId={sendingId}
+                    />
+                ))}
+            </>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            {products.map((product: any, index: number) => (
+                <ProductItem
+                    key={product.itemId}
+                    product={product}
+                    index={index}
+                    type={type}
+                    onSendTelegram={onSendTelegram}
+                    sendingId={sendingId}
+                />
+            ))}
+        </div>
+    );
+};
+
+const ProductItem = ({ product, index, type, onSendTelegram, sendingId }: any) => {
+    const commission = product.commissionRate ? parseFloat(product.commissionRate) * 100 : 0;
+
+    // Determine what to show on the right side based on type
+    const rightSideContent = () => {
+        if (type === 'commission') {
+            return (
+                <div className="text-right">
+                    <div className="text-lg font-bold text-green-400">
+                        {commission.toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-green-300">
+                        Comissão
+                    </div>
+                </div>
+            );
+        } else if (type === 'sales') {
+            return (
+                <div className="text-right">
+                    <div className="text-lg font-bold text-blue-400">
+                        {product.sales}
+                    </div>
+                    <div className="text-xs text-blue-300">
+                        Vendas
+                    </div>
+                </div>
+            );
+        } else {
+            return (
+                <div className="text-right">
+                    <div className="text-lg font-bold text-purple-400">
+                        {product.review_count || product.rating || '-'}
+                    </div>
+                    <div className="text-xs text-purple-300">
+                        Reviews
+                    </div>
+                </div>
+            );
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-4 p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors group">
+            <div className={`text-2xl font-bold ${index === 0 ? 'text-yellow-400' :
+                index === 1 ? 'text-slate-300' :
+                    index === 2 ? 'text-orange-400' :
+                        'text-slate-500'
+                }`}>
+                #{index + 1}
+            </div>
+
+            <img
+                src={product.imageUrl}
+                alt={product.productName}
+                className="w-12 h-12 rounded object-cover"
+            />
+
+            <div className="flex-1 min-w-0">
+                <div className="font-medium truncate" title={product.productName}>
+                    {product.productName}
+                </div>
+                <div className="text-xs text-slate-400">
+                    R$ {product.priceMin} • {(product.sales || 0).toLocaleString()} vendidos
+                </div>
+            </div>
+
+            {rightSideContent()}
+
+            {/* Telegram Button - Visible on hover or always if mobile */}
+            <button
+                onClick={() => onSendTelegram(product)}
+                disabled={sendingId === product.itemId}
+                className="ml-2 p-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                title="Enviar para Telegram"
+            >
+                {sendingId === product.itemId ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                )}
+            </button>
+        </div>
     );
 };
 

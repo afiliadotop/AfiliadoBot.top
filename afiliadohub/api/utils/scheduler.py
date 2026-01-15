@@ -49,6 +49,13 @@ class Scheduler:
             self.create_backup,
             interval_days=7
         )
+        
+        # Check daily product feeds (Shopee CSVs)
+        await self.schedule_task(
+            "product_feeds",
+            self.check_daily_feeds,
+            interval_hours=4 # Check every 4 hours, logic inside handles 24h cooldown
+        )
     
     async def schedule_task(
         self,
@@ -248,6 +255,14 @@ class Scheduler:
             }
         
         return status
+
+    async def check_daily_feeds(self):
+        """Verifica e executa feeds diários"""
+        try:
+            from api.utils.feed_manager import feed_manager
+            await feed_manager.check_daily_feeds()
+        except Exception as e:
+            logger.error(f"Erro ao verificar feeds diários: {e}")
 
 # Instância global do agendador
 scheduler = Scheduler()

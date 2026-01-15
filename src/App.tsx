@@ -30,10 +30,16 @@ const Products = lazy(() => import('./components/dashboard/Products').then(m => 
 const ShopeeProducts = lazy(() => import('./pages/ShopeeProducts').then(m => ({ default: m.ShopeeProducts })));
 const ShopeeAdmin = lazy(() => import('./pages/ShopeeAdmin').then(m => ({ default: m.ShopeeAdmin })));
 const ShopeeFavorites = lazy(() => import('./pages/ShopeeFavorites').then(m => ({ default: m.ShopeeFavorites })));
+const ShopeeFeeds = lazy(() => import('./pages/ShopeeFeeds').then(m => ({ default: m.ShopeeFeeds })));
+
+// Settings pages
+const TelegramSettings = lazy(() => import('./pages/TelegramSettings'));
+const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+
+const ImportCsv = lazy(() => import('./pages/ImportCsv'));
 
 // SaaS pages
 const Pricing = lazy(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
-const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 
 // Placeholders for components not yet extracted
 const Placeholder = ({ title }: { title: string }) => (
@@ -68,11 +74,12 @@ function App() {
                                         <Route index element={<Navigate to="/dashboard/overview" replace />} />
                                         <Route path="overview" element={<Overview />} />
                                         <Route path="products" element={<Products />} />
-                                        <Route path="import" element={<Placeholder title="Importação de CSV" />} />
-                                        <Route path="telegram" element={<Placeholder title="Automação Telegram" />} />
+                                        <Route path="import" element={<ImportCsv />} />
+                                        <Route path="telegram" element={<TelegramSettings />} />
                                         <Route path="tools" element={<Placeholder title="Ferramentas IA" />} />
                                         <Route path="settings" element={<Placeholder title="Configurações" />} />
                                         <Route path="shopee" element={<ShopeeAdmin />} />
+                                        <Route path="shopee/feeds" element={<ShopeeFeeds />} />
                                         <Route path="profile" element={<Profile />} />
                                     </Route>
                                 </Route>

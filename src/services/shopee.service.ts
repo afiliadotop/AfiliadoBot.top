@@ -178,6 +178,20 @@ export const shopeeService = {
     },
 
     /**
+     * Get top sales products - ADMIN ONLY
+     */
+    getTopSales: async (limit: number = 10): Promise<{ products: ShopeeProduct[]; count: number } | null> => {
+        return await api.get(`/shopee/top-sales?limit=${limit}`);
+    },
+
+    /**
+     * Get top popular products - ADMIN ONLY
+     */
+    getTopPopular: async (limit: number = 10): Promise<{ products: ShopeeProduct[]; count: number } | null> => {
+        return await api.get(`/shopee/top-popular?limit=${limit}`);
+    },
+
+    /**
      * Get rate limit status - ADMIN ONLY
      */
     getRateLimitStatus: async (): Promise<{

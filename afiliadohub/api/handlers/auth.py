@@ -113,7 +113,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "id": decoded.get("sub"),
             "email": decoded.get("email"),
             "name": user_metadata.get("name", "Usuário"),
-            "role": user_metadata.get("role", "client")
+            "role": user_metadata.get("role", "client"),
+            "token": token
         }
     except Exception as e:
         logger.error(f"[Auth] Token decode error: {e}")

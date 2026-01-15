@@ -404,7 +404,7 @@ async def get_top_commission_products(
         # Try RPC function first
         try:
             result = supabase.client.rpc('get_top_commission_products', {
-                'p_limit': limit  # Corrigido: nome do parâmetro correto
+                'p_limit': limit
             }).execute()
             
             if result.data:
@@ -435,6 +435,66 @@ async def get_top_commission_products(
             "products": [],
             "count": 0
         }
+
+@router.get("/top-sales")
+async def get_top_sales_products(
+    limit: int = Query(10, le=50),
+    current_admin: Dict = Depends(get_current_admin)
+):
+    """
+    Top produtos por vendas - ADMIN ONLY
+    """
+    try:
+        supabase = get_supabase_manager()
+        
+        try:
+            result = supabase.client.rpc('get_top_sales_products', {
+                'p_limit': limit
+            }).execute()
+            
+            if result.data:
+                return {
+                    "products": result.data,
+                    "count": len(result.data)
+                }
+        except Exception as rpc_error:
+            logger.warning(f"[Shopee API] RPC get_top_sales_products error: {rpc_error}")
+            
+        return {"products": [], "count": 0}
+        
+    except Exception as e:
+        logger.error(f"[Shopee API] Top sales error: {e}")
+        return {"products": [], "count": 0}
+
+@router.get("/top-popular")
+async def get_top_popular_products(
+    limit: int = Query(10, le=50),
+    current_admin: Dict = Depends(get_current_admin)
+):
+    """
+    Top produtos mais populares (Review/Search proxy) - ADMIN ONLY
+    """
+    try:
+        supabase = get_supabase_manager()
+        
+        try:
+            result = supabase.client.rpc('get_most_popular_products', {
+                'p_limit': limit
+            }).execute()
+            
+            if result.data:
+                return {
+                    "products": result.data,
+                    "count": len(result.data)
+                }
+        except Exception as rpc_error:
+            logger.warning(f"[Shopee API] RPC get_most_popular_products error: {rpc_error}")
+            
+        return {"products": [], "count": 0}
+        
+    except Exception as e:
+        logger.error(f"[Shopee API] Top popular error: {e}")
+        return {"products": [], "count": 0}
 
 @router.get("/rate-limit-status")
 async def get_rate_limit_status(
@@ -472,13 +532,15 @@ async def send_product_to_telegram(
         from datetime import datetime
         
         # Verifica configuração do Telegram
-        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-        channel_id = os.getenv("TELEGRAM_CHANNEL_ID")
+        from ..utils.telegram_settings_manager import telegram_settings
+        
+        bot_token = telegram_settings.get_bot_token()
+        channel_id = telegram_settings.get_group_chat_id()
         
         if not bot_token or not channel_id:
             raise HTTPException(
                 status_code=400,
-                detail="Telegram não configurado. Configure TELEGRAM_BOT_TOKEN e TELEGRAM_CHANNEL_ID no .env"
+                detail="Telegram não configurado. Configure no Dashboard -> Telegram"
             )
         
         # Usa os dados do produto enviados pelo frontend

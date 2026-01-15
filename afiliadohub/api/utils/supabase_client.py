@@ -38,6 +38,17 @@ class SupabaseManager:
             self._initialize()
         return self._client
     
+    def get_authenticated_client(self, token: str) -> Client:
+        """Retorna um cliente Supabase autenticado com o token do usuário (para RLS)"""
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        
+        # Cria novo client com header de autorização
+        options = ClientOptions(
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        return create_client(url, key, options=options)
+    
     # ==================== MÉTODOS PARA PRODUTOS ====================
     
     async def insert_product(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -74,7 +85,7 @@ class SupabaseManager:
             print(f"[ERRO] Erro ao inserir produto: {e}")
             raise
     
-    async def bulk_insert_products(self, products: List[Dict[str, Any]], batch_size: int = 1000) -> Dict[str, Any]:
+    async def bulk_insert_products(self, products: List[Dict[str, Any]], batch_size: int = 1000, token: Optional[str] = None) -> Dict[str, Any]:
         """Insere múltiplos produtos em lote"""
         results = {
             "total": len(products),
@@ -83,6 +94,9 @@ class SupabaseManager:
             "errors": 0,
             "error_messages": []
         }
+        
+        # Decide qual client usar
+        target_client = self.get_authenticated_client(token) if token else self.client
         
         # Processa em lotes
         for i in range(0, len(products), batch_size):
@@ -97,7 +111,7 @@ class SupabaseManager:
                     product['last_checked'] = now
                 
                 # Upsert (insere ou atualiza se existir)
-                response = self.client.table("products").upsert(
+                response = target_client.table("products").upsert(
                     batch,
                     on_conflict='affiliate_link'
                 ).execute()

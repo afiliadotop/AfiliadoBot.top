@@ -10,13 +10,23 @@ sys.path.append(os.path.join(ROOT_DIR, "afiliadohub"))
 
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
-# Check token
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-if not TELEGRAM_BOT_TOKEN:
-    print("ERRO: TELEGRAM_BOT_TOKEN nao encontrado no .env!")
-    sys.exit(1)
+# Check token via Settings Manager (to test fallback/DB)
+from afiliadohub.api.utils.telegram_settings_manager import telegram_settings
 
-print(f"TELEGRAM_BOT_TOKEN configurado: {TELEGRAM_BOT_TOKEN[:20]}...")
+print("Testando TelegramSettingsManager...")
+print(f"Settings raw: {telegram_settings.get_settings()}")
+TELEGRAM_BOT_TOKEN = telegram_settings.get_bot_token()
+GROUP_CHAT_ID = telegram_settings.get_group_chat_id()
+
+print(f"Token obtido: {'✅ Sim' if TELEGRAM_BOT_TOKEN else '❌ Não'}")
+print(f"Chat ID obtido: {'✅ Sim' if GROUP_CHAT_ID else '❌ Não'}")
+
+if TELEGRAM_BOT_TOKEN:
+    print(f"Token (masked): {TELEGRAM_BOT_TOKEN[:10]}...")
+
+if not TELEGRAM_BOT_TOKEN:
+    print("ERRO: TELEGRAM_BOT_TOKEN nao encontrado! (Verifique DB ou .env)")
+    sys.exit(1)
 
 # Test bot
 from telegram import Bot

@@ -19,23 +19,32 @@ load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 from api.utils.supabase_client import get_supabase_manager
 
-ML_ACCESS_TOKEN = os.getenv("ML_ACCESS_TOKEN")
 ML_AFFILIATE_TAG = os.getenv("ML_AFFILIATE_TAG", "")
 ML_BASE_URL = "https://api.mercadolibre.com"
 
+# Headers para evitar bloqueio 403
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Cache-Control": "no-cache",
+}
+
 # Categorias para importar automaticamente
 CATEGORIES_TO_IMPORT = [
-    {"keyword": "iphone 15", "category": "Celulares", "limit": 30},
-    {"keyword": "notebook gamer", "category": "Informática", "limit": 30},
-    {"keyword": "smart tv 50", "category": "Eletrônicos", "limit": 30},
-    {"keyword": "fone bluetooth", "category": "Áudio", "limit": 30},
-    {"keyword": "smartwatch", "category": "Eletrônicos", "limit": 20},
-    {"keyword": "tablet", "category": "Eletrônicos", "limit": 20},
+    {"keyword": "iphone 15", "category": "Celulares", "limit": 20},
+    {"keyword": "notebook gamer", "category": "Informática", "limit": 20},
+    {"keyword": "smart tv 50", "category": "Eletrônicos", "limit": 15},
+    {"keyword": "fone bluetooth", "category": "Áudio", "limit": 15},
+    {"keyword": "smartwatch", "category": "Eletrônicos", "limit": 10},
+    {"keyword": "tablet", "category": "Eletrônicos", "limit": 10},
 ]
 
 
-async def search_ml_products(keyword: str, limit: int = 50) -> list:
-    """Busca produtos no ML via API"""
+async def search_ml_products(keyword: str, limit: int = 50, retries: int = 3) -> list:
+    """Busca produtos no ML via API com retry logic"""
     url = f"{ML_BASE_URL}/sites/MLB/search"
     params = {
         "q": keyword,
@@ -45,22 +54,36 @@ async def search_ml_products(keyword: str, limit: int = 50) -> list:
         "sort": "price_asc"
     }
     
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-        
-        return data.get("results", [])
-        
-    except Exception as e:
-        print(f"[ERRO] Falha ao buscar '{keyword}': {e}")
-        return []
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=30.0, headers=HEADERS, follow_redirects=True) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+            
+            return data.get("results", [])
+            
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                wait_time = (attempt + 1) * 5  # 5s, 10s, 15s
+                print(f"  ⚠️  Bloqueio 403 (tentativa {attempt + 1}/{retries}). Aguardando {wait_time}s...")
+                await asyncio.sleep(wait_time)
+                continue
+            print(f"[ERRO HTTP] {e.response.status_code} ao buscar '{keyword}': {e}")
+            return []
+        except Exception as e:
+            print(f"[ERRO] Falha ao buscar '{keyword}': {e}")
+            return []
+    
+    print(f"[ERRO] Todas as tentativas falharam para '{keyword}'")
+    return []
 
 
 def generate_affiliate_link(item_id: str) -> str:
     """Gera link de afiliado"""
-    base_url = f"https://produto.mercadolivre.com.br/MLB-{item_id}"
+    # Remove prefixo MLB- se existir
+    clean_id = item_id.replace("MLB-", "")
+    base_url = f"https://produto.mercadolivre.com.br/MLB-{clean_id}"
     
     if ML_AFFILIATE_TAG:
         return f"{base_url}?matt_tool=82322591&matt_word={ML_AFFILIATE_TAG}"
@@ -85,8 +108,8 @@ async def import_products():
     print("IMPORTAÇÃO MERCADO LIVRE")
     print("=" * 60)
     
-    if not ML_ACCESS_TOKEN:
-        print("[AVISO] ML_ACCESS_TOKEN não configurado - continuando sem autenticação")
+    if not ML_AFFILIATE_TAG:
+        print("⚠️  [AVISO] ML_AFFILIATE_TAG não configurado - links sem tracking")
     
     supabase = get_supabase_manager()
     total_imported = 0
@@ -141,15 +164,24 @@ async def import_products():
                 print(f"  ❌ Erro ao importar {item.get('id', 'N/A')}: {e}")
         
         # Rate limiting para evitar bloqueio
-        print(f"⏳ Aguardando 2s antes da próxima busca...")
-        await asyncio.sleep(2)
+        if products:  # Só espera se encontrou produtos
+            print(f"⏳ Aguardando 3s antes da próxima busca...")
+            await asyncio.sleep(3)
     
     print("\n" + "=" * 60)
     print("RESUMO DA IMPORTAÇÃO")
     print("=" * 60)
     print(f"✅ Total importado: {total_imported} produtos")
     print(f"❌ Total de erros: {total_errors}")
-    print(f"📊 Taxa de sucesso: {(total_imported / (total_imported + total_errors) * 100):.1f}%")
+    
+    # Fix para ZeroDivisionError
+    total_operations = total_imported + total_errors
+    if total_operations > 0:
+        success_rate = (total_imported / total_operations * 100)
+        print(f"📊 Taxa de sucesso: {success_rate:.1f}%")
+    else:
+        print(f"📊 Taxa de sucesso: 0.0% (nenhum produto processado)")
+    
     print("=" * 60)
 
 

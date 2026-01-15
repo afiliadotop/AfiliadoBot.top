@@ -16,6 +16,7 @@ from telegram.ext import (
 
 from ..utils.supabase_client import get_supabase_manager
 from ..utils.link_processor import normalize_link, detect_store
+from ..utils.telegram_settings_manager import telegram_settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ STORE_EMOJIS = {
 }
 
 class TelegramBot:
-    def __init__(self, token: str):
+    def __init__(self, token: Optional[str] = None):
         self.token = token
         self.application = None
         self.supabase = get_supabase_manager()
@@ -39,6 +40,20 @@ class TelegramBot:
     async def initialize(self):
         """Inicializa o bot Telegram"""
         try:
+            # 1. Tenta pegar do banco (prioridade)
+            if not self.token:
+                self.token = telegram_settings.get_bot_token()
+            
+            # 2. Fallback para variáveis de ambiente (retrocompatibilidade)
+            if not self.token:
+                self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+                if self.token:
+                    logger.info("[TELEGRAM] Usando token do .env (Fallback)")
+
+            if not self.token:
+                logger.warning("[TELEGRAM] Bot token não configurado no banco de dados nem nas variáveis de ambiente.")
+                return None
+
             self.application = Application.builder().token(self.token).build()
             
             # Registra handlers
@@ -54,7 +69,8 @@ class TelegramBot:
             
         except Exception as e:
             logger.error(f"[ERRO] Erro ao inicializar bot Telegram: {e}")
-            raise
+            # Não lança erro para não derrubar a API se o telegram estiver desconfigurado
+            return None
     
     def _register_handlers(self):
         """Registra todos os handlers de comandos"""
@@ -966,9 +982,25 @@ Configure suas preferências para receber recomendações personalizadas!
         
         return message.strip()
     
-    async def send_product_to_channel(self, chat_id: str, product: Dict[str, Any]):
+    async def send_product_to_channel(self, chat_id: Optional[str], product: Dict[str, Any]):
         """Envia produto para um canal/grupo"""
         try:
+            # Garante que temos um token
+            if not self.token:
+                self.token = telegram_settings.get_bot_token()
+                
+            if not self.token:
+                logger.error("[TELEGRAM] Impossível enviar mensagem: Token não configurado")
+                return False
+                
+            # Se chat_id não informado, tenta pegar do banco
+            if not chat_id:
+                chat_id = telegram_settings.get_group_chat_id()
+                
+            if not chat_id:
+                logger.error("[TELEGRAM] Impossível enviar mensagem: Chat ID não configurado")
+                return False
+
             bot = self.application.bot if self.application else Bot(self.token)
             
             message = self._format_product_message(product)
@@ -994,7 +1026,7 @@ Configure suas preferências para receber recomendações personalizadas!
             return False
 
 # Função para inicializar o bot
-async def setup_telegram_handlers(token: str):
+async def setup_telegram_handlers(token: Optional[str] = None):
     """Configura e retorna a aplicação Telegram"""
     bot = TelegramBot(token)
     return await bot.initialize()

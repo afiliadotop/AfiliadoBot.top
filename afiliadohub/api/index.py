@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -33,13 +33,13 @@ from .utils.scheduler import scheduler
 logger = setup_logger()
 
 # Configurações de Ambiente
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# TELEGRAM_BOT_TOKEN removido - agora usa banco de dados via telegram_settings_manager
 CRON_TOKEN = os.getenv("CRON_TOKEN")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 # Variáveis Globais
-bot = Bot(TELEGRAM_BOT_TOKEN) if TELEGRAM_BOT_TOKEN else None
 telegram_app = None
+# bot global será descontinuado em favor de telegram_app.bot ou instanciado sob demanda
 
 # Security
 security = HTTPBearer()
@@ -51,31 +51,36 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] Iniciando AfiliadoHub API...")
     
     # Inicia Scheduler (apenas se não estiver em ambiente serverless como Vercel)
-    # Se estiver no Vercel, o GitHub Actions (cron.yml) fará o trabalho.
     if os.getenv("RUN_SCHEDULER", "False").lower() == "true":
         await scheduler.start()
 
-    # Inicializa Bot Telegram
-    if TELEGRAM_BOT_TOKEN:
+    # Inicializa Bot Telegram (Tenta carregar configurações do banco)
+    try:
         from .handlers.telegram import setup_telegram_handlers
         global telegram_app
-        telegram_app = await setup_telegram_handlers(TELEGRAM_BOT_TOKEN)
         
-        # Configura webhook para produção (Render)
-        render_url = os.getenv("RENDER_EXTERNAL_URL")
-        if render_url:
-            webhook_url = f"{render_url}/api/telegram/webhook"
-            try:
-                await bot.set_webhook(webhook_url)
-                logger.info(f"[TELEGRAM] Webhook configurado: {webhook_url}")
-            except Exception as e:
-                logger.error(f"[TELEGRAM] Erro ao configurar webhook: {e}")
+        # Tenta inicializar. Se não tiver config no banco, retorna None (sem erro)
+        telegram_app = await setup_telegram_handlers()
+        
+        if telegram_app:
+            logger.info("[TELEGRAM] Bot inicializado com sucesso via banco de dados")
+            
+            # Configura webhook para produção (Render)
+            render_url = os.getenv("RENDER_EXTERNAL_URL")
+            if render_url:
+                webhook_url = f"{render_url}/api/telegram/webhook"
+                try:
+                    await telegram_app.bot.set_webhook(webhook_url)
+                    logger.info(f"[TELEGRAM] Webhook configurado: {webhook_url}")
+                except Exception as e:
+                    logger.error(f"[TELEGRAM] Erro ao configurar webhook: {e}")
+            else:
+                logger.info("[TELEGRAM] Modo local - sem webhook")
         else:
-            logger.info("[TELEGRAM] Modo local - sem webhook")
-        
-        # Se estiver em modo Polling (VPS local), descomente abaixo:
-        # asyncio.create_task(telegram_app.updater.start_polling())
-        # asyncio.create_task(telegram_app.start())
+            logger.warning("[TELEGRAM] Bot não inicializado (Configurações ausentes no DB)")
+            
+    except Exception as e:
+        logger.error(f"[STARTUP] Erro ao inicializar Telegram: {e}")
         
     yield
     
@@ -205,7 +210,8 @@ async def telegram_webhook(request: Request):
         
         # Processar update do Telegram
         from telegram import Update
-        update = Update.de_json(update_data, bot)
+        # Usar o bot do telegram_app
+        update = Update.de_json(update_data, telegram_app.bot)
         await telegram_app.process_update(update)
         
         return {"ok": True}
@@ -219,6 +225,7 @@ async def telegram_webhook(request: Request):
 async def import_csv(
     file: UploadFile = File(...),
     store: str = "shopee",
+    send_to_telegram: bool = Form(False),
     background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     from .handlers.csv_import import process_csv_upload
@@ -230,7 +237,7 @@ async def import_csv(
     import io
     file_obj = io.BytesIO(content)
     
-    background_tasks.add_task(process_csv_upload, file_obj, store)
+    background_tasks.add_task(process_csv_upload, file_obj, store, False, send_to_telegram)
     
     return {"status": "processing", "message": "Importação iniciada em background"}
 
@@ -241,6 +248,7 @@ from .handlers.auth import router as auth_router
 from .handlers.products import router as products_router
 from .handlers.shopee_api import router as shopee_router
 from .handlers.mercadolivre_api import router as mercadolivre_router
+from .handlers.telegram_settings import router as telegram_settings_router
 
 # Mercado Livre OAuth Callback (temporário para obter tokens)
 @app.get("/api/ml/callback")
@@ -287,6 +295,11 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
 app.include_router(shopee_router, prefix="/api")
 app.include_router(mercadolivre_router, prefix="/api")
+app.include_router(telegram_settings_router, prefix="/api")
+
+# Feed Router
+from .handlers.feed_api import router as feed_router
+app.include_router(feed_router, prefix="/api")
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
@@ -307,6 +320,9 @@ async def send_cron_message(payload: TelegramMessage):
     from .handlers.telegram import TelegramBot
     
     try:
+        # Helper para operações do Telegram
+        tg_helper = TelegramBot() # Pega token do banco automaticamente se não passado
+        
         # Se o payload vier com product_id, busca o produto
         if payload.product_id:
             supabase = get_supabase_manager()
@@ -314,16 +330,26 @@ async def send_cron_message(payload: TelegramMessage):
             if not res.data:
                 return {"status": "skipped", "reason": "product_not_found"}
             
-            # Instancia bot helper
-            tg_helper = TelegramBot(BOT_TOKEN)
+            # Passa a app global se existir, senão o helper se vira
             tg_helper.application = telegram_app
             
-            await tg_helper.send_product_to_channel(payload.chat_id, res.data)
-            return {"status": "sent", "product": res.data["name"]}
+            success = await tg_helper.send_product_to_channel(payload.chat_id, res.data)
+            status = "sent" if success else "failed"
+            return {"status": status, "product": res.data["name"]}
             
         # Caso contrário, envia mensagem de texto pura
-        elif payload.message and bot:
-            await bot.send_message(chat_id=payload.chat_id, text=payload.message, parse_mode=payload.parse_mode)
+        elif payload.message:
+            # Inicializa app/bot se precisar (para ter acesso ao bot.send_message)
+            if telegram_app:
+                bot_instance = telegram_app.bot
+            else:
+                # Tenta inicializar sob demanda
+                app_instance = await tg_helper.initialize()
+                if not app_instance:
+                     return {"status": "skipped", "reason": "bot_not_configured"}
+                bot_instance = app_instance.bot
+
+            await bot_instance.send_message(chat_id=payload.chat_id, text=payload.message)
             return {"status": "sent", "type": "text"}
             
     except Exception as e:

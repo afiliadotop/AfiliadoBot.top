@@ -1,8 +1,3 @@
-"""
-Mercado Livre API Handler
-Endpoints para busca de produtos e geração de links de afiliado
-"""
-
 from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
@@ -16,19 +11,38 @@ router = APIRouter(prefix="/mercadolivre", tags=["mercadolivre"])
 logger = logging.getLogger(__name__)
 
 # Configurações ML
-ML_ACCESS_TOKEN = os.getenv("ML_ACCESS_TOKEN")
 ML_AFFILIATE_TAG = os.getenv("ML_AFFILIATE_TAG", "")
+ML_USER_ID = os.getenv("ML_USER_ID", "")
 ML_BASE_URL = "https://api.mercadolibre.com"
 
 # Models
 class GenerateLinkRequest(BaseModel):
-    item_id: str
+    product_url: str
 
 class MLSearchFilters(BaseModel):
     keyword: str
     limit: int = 50
-    sort: str = "price_asc"  # price_asc, price_desc, relevance
-    condition: str = "new"  # new, used, not_specified
+    sort: str = "price_asc"
+    condition: str = "new"
+
+
+# ==================== HELPER FUNCTIONS ====================
+
+def generate_affiliate_link(item_id: str) -> str:
+    """
+    Gera link de afiliado ML usando o padrão público
+    URL: https://produto.mercadolivre.com.br/MLB-{item_id}?matt_tool=82322591&matt_word={tag}
+    
+    Baseado na documentação do Portal de Afiliados ML
+    """
+    base_url = f"https://produto.mercadolivre.com.br/MLB-{item_id}"
+    
+    if ML_AFFILIATE_TAG:
+        # Adiciona parâmetro de tracking do programa de afiliados
+        return f"{base_url}?matt_tool=82322591&matt_word={ML_AFFILIATE_TAG}"
+    
+    # Retorna URL sem tracking se não tiver tag
+    return base_url
 
 
 # ==================== PUBLIC ENDPOINTS ====================
@@ -38,9 +52,10 @@ async def test_ml_endpoint():
     """Test endpoint para verificar configuração"""
     return {
         "status": "ok",
-        "message": "Mercado Livre API ativa",
-        "has_token": bool(ML_ACCESS_TOKEN),
-        "has_tag": bool(ML_AFFILIATE_TAG)
+        "message": "Mercado Livre API ativa (API pública + links manuais)",
+        "has_tag": bool(ML_AFFILIATE_TAG),
+        "has_user_id": bool(ML_USER_ID),
+        "note": "ML não tem API pública para gerar links de afiliado. Usamos padrão manual."
     }
 
 
@@ -53,12 +68,13 @@ async def search_products(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Busca produtos no Mercado Livre
-    Retorna produtos formatados com links de afiliado
+    Busca produtos no Mercado Livre (API pública)
+    Retorna produtos com links de afiliado gerados manualmente
     """
     try:
         logger.info(f"[ML API] Buscando: {keyword} (limit={limit})")
         
+        # API pública do ML - não requer autenticação
         url = f"{ML_BASE_URL}/sites/MLB/search"
         params = {
             "q": keyword,
@@ -92,6 +108,10 @@ async def search_products(
             # Imagem em alta resolução
             image_url = item.get("thumbnail", "").replace("-I.jpg", "-O.jpg")
             
+            # Gerar link de afiliado
+            item_id = item["id"].replace("MLB-", "")
+            affiliate_link = generate_affiliate_link(item_id)
+            
             products.append({
                 "id": item["id"],
                 "name": item["title"],
@@ -103,7 +123,7 @@ async def search_products(
                 "condition": item.get("condition", "new"),
                 "shipping_free": item.get("shipping", {}).get("free_shipping", False),
                 "permalink": item["permalink"],
-                "affiliate_link": generate_affiliate_link(item["id"]),
+                "affiliate_link": affiliate_link,
                 "store": "mercado_livre"
             })
         
@@ -130,19 +150,43 @@ async def generate_link_endpoint(
     current_user: Dict = Depends(get_current_user)
 ):
     """
-    Gera link de afiliado para um produto específico
+    Gera link de afiliado para uma URL de produto ML
+    
+    Importante: ML não tem API pública para isso.
+    Usamos o padrão manual: ?matt_tool=82322591&matt_word={tag}
     """
     try:
-        affiliate_link = generate_affiliate_link(request.item_id)
+        url = request.product_url
+        
+        # Validar URL
+        if not url.startswith(("https://produto.mercadolivre.com.br", "https://www.mercadolivre.com.br")):
+            raise HTTPException(status_code=400, detail="URL inválida. Deve ser um produto do Mercado Livre.")
+        
+        # Extrair item_id da URL
+        import re
+        match = re.search(r'MLB-(\d+)', url)
+        if not match:
+            raise HTTPException(status_code=400, detail="Não foi possível extrair o ID do produto da URL.")
+        
+        item_id = match.group(1)
+        
+        # Gerar link de afiliado
+        affiliate_link = generate_affiliate_link(item_id)
+        
+        logger.info(f"[ML Generate Link] Link criado: {affiliate_link}")
         
         return {
-            "item_id": request.item_id,
+            "success": True,
             "affiliate_link": affiliate_link,
-            "has_tag": bool(ML_AFFILIATE_TAG)
+            "tag": ML_AFFILIATE_TAG,
+            "origin_url": url,
+            "note": "Link gerado usando padrão manual ML (sem API)"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"[ML API] Erro ao gerar link: {e}")
+        logger.error(f"[ML Generate Link] Erro: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -189,25 +233,9 @@ async def get_ml_stats(
         return {
             "store": "mercado_livre",
             "total_products": count,
-            "has_credentials": bool(ML_ACCESS_TOKEN)
+            "has_tag": bool(ML_AFFILIATE_TAG)
         }
         
     except Exception as e:
         logger.error(f"[ML Stats] Erro: {e}")
         return {"store": "mercado_livre", "total_products": 0}
-
-
-# ==================== HELPER FUNCTIONS ====================
-
-def generate_affiliate_link(item_id: str) -> str:
-    """
-    Gera link de afiliado com tag de tracking
-    Se ML_AFFILIATE_TAG não estiver configurado, retorna URL padrão
-    """
-    base_url = f"https://produto.mercadolivre.com.br/MLB-{item_id}"
-    
-    if ML_AFFILIATE_TAG:
-        # Adiciona parâmetro de tracking
-        return f"{base_url}?matt_tool=82322591&matt_word={ML_AFFILIATE_TAG}"
-    
-    return base_url

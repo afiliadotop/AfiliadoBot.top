@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML OAuth - Captura de CODE</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin: 0 0 20px 0;
+        }
+
+        .code-box {
+            background: #f8f9fa;
+            border: 2px solid #3483fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .copy-btn {
+            background: #3483fa;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #2968c8;
+        }
+
+        .success {
+            color: #28a745;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .instructions {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .countdown {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔐 Mercado Livre - CODE Capturado!</h1>
+
+        <div class="instructions">
+            <strong>📋 Instruções:</strong>
+            <ol>
+                <li>Copie o CODE abaixo</li>
+                <li>Execute: <code>python scripts/ml_oauth_pkce.py</code></li>
+                <li>Escolha opção 2</li>
+                <li>Cole o CODE</li>
+            </ol>
+        </div>
+
+        <div id="codeSection"></div>
+        <div id="countdown" class="countdown"></div>
+    </div>
+
+    <script>
+        // Extrair CODE da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+
+        const codeSection = document.getElementById('codeSection');
+        const countdownDiv = document.getElementById('countdown');
+
+        if (code) {
+            codeSection.innerHTML = `
+                <h3>✅ CODE Recebido:</h3>
+                <div class="code-box" id="codeText">${code}</div>
+                <button class="copy-btn" onclick="copyCode()">📋 Copiar CODE</button>
+                <div id="copyMsg"></div>
+            `;
+
+            // Countdown de 60 segundos
+            let seconds = 60;
+            const timer = setInterval(() => {
+                seconds--;
+                countdownDiv.innerHTML = `⏱️ CODE expira em ${seconds} segundos. Copie agora!`;
+
+                if (seconds <= 0) {
+                    clearInterval(timer);
+                    countdownDiv.innerHTML = '⚠️ CODE pode ter expirado. Gere um novo se necessário.';
+                    countdownDiv.style color = '#dc3545';
+                }
+            }, 1000);
+
+        } else {
+            codeSection.innerHTML = `
+                <h3 style="color: #dc3545;">❌ CODE não encontrado na URL</h3>
+                <p>Esta página deve ser acessada após autorizar no Mercado Livre.</p>
+            `;
+        }
+
+        function copyCode() {
+            const codeText = document.getElementById('codeText').textContent;
+            navigator.clipboard.writeText(codeText).then(() => {
+                document.getElementById('copyMsg').innerHTML =
+                    '<div class="success">✅ CODE copiado! Cole no terminal.</div>';
+            });
+        }
+    </script>
+</body>
+
+</html>

@@ -14,6 +14,12 @@ export const Products = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
+    // ML Modal state
+    const [isMLModalOpen, setIsMLModalOpen] = useState(false);
+    const [mlProductUrl, setMlProductUrl] = useState('');
+    const [mlCategory, setMlCategory] = useState('Eletrônicos');
+    const [mlLoading, setMlLoading] = useState(false);
+
     const filteredProducts = (products || []).filter(p => {
         if (!p || !p.name) return false;
         return (
@@ -47,6 +53,48 @@ export const Products = () => {
         }
     };
 
+    const handleAddMLProduct = async () => {
+        if (!mlProductUrl.trim()) {
+            alert('Por favor, cole a URL do produto ML');
+            return;
+        }
+
+        setMlLoading(true);
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:8000/api/products/add-ml-product', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    product_url: mlProductUrl,
+                    category: mlCategory
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.detail || 'Erro ao adicionar produto');
+            }
+
+            alert(data.message || 'Produto adicionado com sucesso!');
+            setIsMLModalOpen(false);
+            setMlProductUrl('');
+
+            // Refresh products
+            window.location.reload();
+
+        } catch (error: any) {
+            alert(error.message || 'Erro ao adicionar produto ML');
+        } finally {
+            setMlLoading(false);
+        }
+    };
+
     return (
         <PageTransition>
             <div className="space-y-6">
@@ -59,6 +107,12 @@ export const Products = () => {
                         className="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                     >
                         <div className="flex items-center gap-2"><Plus size={16} /> Adicionar Manualmente</div>
+                    </button>
+                    <button
+                        onClick={() => setIsMLModalOpen(true)}
+                        className="pb-3 px-2 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                    >
+                        <div className="flex items-center gap-2"><Package size={16} /> Adicionar ML</div>
                     </button>
                 </div>
 
@@ -193,6 +247,72 @@ export const Products = () => {
                 onSave={handleSave}
                 product={editingProduct}
             />
+
+            {/* ML Modal */}
+            {isMLModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 w-full max-w-md mx-4 border border-slate-200 dark:border-slate-800">
+                        <h3 className="text-xl font-semibold mb-4 text-slate-900 dark:text-slate-100">
+                            Adicionar Produto Mercado Livre
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">
+                                    URL do Produto
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="https://produto.mercadolivre.com.br/MLB-123456"
+                                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={mlProductUrl}
+                                    onChange={(e) => setMlProductUrl(e.target.value)}
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Cole a URL completa do produto do Mercado Livre</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">
+                                    Categoria
+                                </label>
+                                <select
+                                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={mlCategory}
+                                    onChange={(e) => setMlCategory(e.target.value)}
+                                >
+                                    <option>Eletrônicos</option>
+                                    <option>Celulares</option>
+                                    <option>Informática</option>
+                                    <option>Casa e Jardim</option>
+                                    <option>Esportes</option>
+                                    <option>Moda</option>
+                                    <option>Áudio</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6">
+                            <button
+                                onClick={handleAddMLProduct}
+                                disabled={mlLoading}
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {mlLoading ? 'Adicionando...' : '✅ Adicionar'}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsMLModalOpen(false);
+                                    setMlProductUrl('');
+                                }}
+                                disabled={mlLoading}
+                                className="px-6 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </PageTransition>
     );
 };
