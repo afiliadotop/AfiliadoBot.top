@@ -25,6 +25,7 @@ from .handlers.commission import CommissionSystem
 from .handlers.competition_analysis import CompetitionAnalyzer
 from .handlers.advanced_analytics import AdvancedAnalytics
 from .handlers.export_reports import ReportExporter
+from .handlers.health import router as health_router
 from .utils.supabase_client import get_supabase_manager
 from .utils.logger import setup_logger
 from .utils.scheduler import scheduler
@@ -291,6 +292,8 @@ async def ml_oauth_callback(code: str = Query(...)):
         logger.error(f"ML OAuth error: {e}")
         return {"error": str(e), "success": False}
 
+# Registrar routers
+app.include_router(health_router)  # Health check (no prefix - root level)
 app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
 app.include_router(shopee_router, prefix="/api")
@@ -299,7 +302,8 @@ app.include_router(telegram_settings_router, prefix="/api")
 
 # Feed Router
 from .handlers.feed_api import router as feed_router
-app.include_router(feed_router, prefix="/api")
+if feed_router:
+    app.include_router(feed_router, prefix="/api")
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):

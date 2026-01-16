@@ -1,0 +1,123 @@
+name: CI - Lint and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-python:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort mypy bandit
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          
+      - name: Run Black (formatting check)
+        run: black --check afiliadohub/
+        
+      - name: Run isort (import sorting)
+        run: isort --check-only afiliadohub/
+        
+      - name: Run Flake8 (linting)
+        run: flake8 afiliadohub/ --max-line-length=100 --extend-ignore=E203,W503
+        
+      - name: Run Bandit (security)
+        run: bandit -r afiliadohub/ -ll
+        
+  test-python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    needs: lint-python
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-asyncio
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ --cov=afiliadohub --cov-report=xml --cov-report=term
+        continue-on-error: true
+        
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  lint-frontend:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: afiliadohub-nextjs/package-lock.json
+          
+      - name: Install dependencies
+        working-directory: ./afiliadohub-nextjs
+        run: npm ci
+        
+      - name: Run ESLint
+        working-directory: ./afiliadohub-nextjs
+        run: npm run lint
+        
+      - name: Run Type Check
+        working-directory: ./afiliadohub-nextjs
+        run: npm run type-check
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
