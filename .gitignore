@@ -22,10 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 
-# Security
+# Security - Environment Files
 .env
+.env.*
 .env.test
 .env.production
+.env.local
+.env.development
+
+# Security - Configuration Scripts (may contain tokens/secrets)
+**/configure-*.ps1
+**/configure-*.sh
+**/*-credentials.*
+**/*-secrets.*
 
 
 # Python
