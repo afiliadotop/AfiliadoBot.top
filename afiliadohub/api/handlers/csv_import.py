@@ -30,7 +30,6 @@ class CSVImporter:
     def _load_stores(self):
         """Carrega stores do banco e cria cache name->id"""
         try:
-        try:
             client = self.supabase.get_authenticated_client(self.token) if self.token else self.supabase.client
             result = client.table("stores").select("id, name").execute()
             return {store['name'].lower(): store['id'] for store in result.data}
