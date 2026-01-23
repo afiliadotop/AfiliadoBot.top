@@ -123,7 +123,7 @@ async def import_top_products() -> Dict[str, Any]:
                     # Calcula desconto
                     if product_data['original_price'] > product_data['current_price']:
                         discount = ((product_data['original_price'] - product_data['current_price']) / product_data['original_price']) * 100
-                        product_data['discount_percentage'] = round(discount, 2)
+                        product_data['discount_percentage'] = int(round(discount))  # FIX: Converte para int
                     
                     # Verifica se já existe
                     existing = supabase.client.table('products')\
@@ -169,16 +169,17 @@ async def import_top_products() -> Dict[str, Any]:
         
         # Registra no log do Supabase
         try:
+            import json
             supabase.client.rpc('log_shopee_sync', {
-                'p_sync_type': 'daily',  # FIX: Encurta para caber em varchar(20)
+                'p_sync_type': 'daily',
                 'p_products_imported': stats['imported'],
                 'p_products_updated': stats['updated'],
                 'p_errors': stats['errors'],
-                'p_metadata': {
-                    'min_comm': MIN_COMMISSION,  # FIX: Encurta campo
-                    'high_count': stats['high_commission'],  # FIX: Encurta campo
+                'p_metadata': json.dumps({  # FIX: Converte para JSON string
+                    'min_comm': MIN_COMMISSION,
+                    'high_count': stats['high_commission'],
                     'duration': stats['duration']
-                }
+                })
             }).execute()
         except Exception as e:
             logger.warning(f"Erro ao registrar log: {e}")
