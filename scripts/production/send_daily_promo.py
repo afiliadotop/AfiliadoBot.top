@@ -12,7 +12,7 @@ sys.path.append(os.path.join(ROOT_DIR, "afiliadohub"))
 load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 from telegram import Bot
-from api.utils.supabase_client import get_supabase_manager
+from afiliadohub.api.utils.supabase_client import get_supabase_manager
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1002499912192")
