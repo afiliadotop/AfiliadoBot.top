@@ -2,12 +2,8 @@ name: Shopee Daily Import
 
 on:
   schedule:
-    # 6h BRT = 9h UTC (manhã - importa produtos frescos)
-    - cron: '0 9 * * *'
-    # 14h BRT = 17h UTC (tarde - atualiza preços e estoque)
-    - cron: '0 17 * * *'
-    # 22h BRT = 1h UTC (noite - última atualização do dia)
-    - cron: '0 1 * * *'
+    # 00h BRT = 03h UTC (meia-noite - importação diária completa)
+    - cron: '0 3 * * *'
   workflow_dispatch:  # Permite execução manual
 
 jobs:
