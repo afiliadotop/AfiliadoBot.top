@@ -67,9 +67,13 @@ async def login(credentials: UserLogin):
         if not auth_response.user or not auth_response.session:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
             
-        # Extract metadata
+        # Extract metadata - SECURITY FIX: Check app_metadata first (secure)
+        app_meta = auth_response.user.app_metadata or {}
         user_meta = auth_response.user.user_metadata or {}
-        role = user_meta.get("role", "client") # Default to client if missing
+        
+        # Check app_metadata first (secure, only backend can edit)
+        # Fallback to user_metadata for backwards compatibility
+        role = app_meta.get("role") or user_meta.get("role", "client")
         name = user_meta.get("name", "Usuário")
 
         return {
@@ -107,13 +111,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         # (Em prod, deveria verificar assinatura com SUPABASE_JWT_SECRET)
         decoded = jwt.decode(token, options={"verify_signature": False})
         
+        # SECURITY FIX: Check app_metadata first (secure)
+        app_metadata = decoded.get("app_metadata", {})
         user_metadata = decoded.get("user_metadata", {})
+        
+        # Check app_metadata first, fallback to user_metadata
+        role = app_metadata.get("role") or user_metadata.get("role", "client")
         
         return {
             "id": decoded.get("sub"),
             "email": decoded.get("email"),
             "name": user_metadata.get("name", "Usuário"),
-            "role": user_metadata.get("role", "client"),
+            "role": role,
             "token": token
         }
     except Exception as e:
