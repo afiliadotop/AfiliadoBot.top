@@ -75,6 +75,23 @@ async def import_top_products() -> Dict[str, Any]:
             products = result.get('nodes', [])
             logger.info(f"Encontrados {len(products)} produtos")
             
+            # Busca ou cria store Shopee
+            store_result = supabase.client.table('stores')\
+                .select('id')\
+                .eq('name', 'shopee')\
+                .execute()
+            
+            if store_result.data:
+                store_id = store_result.data[0]['id']
+            else:
+                # Cria store se não existir
+                new_store = supabase.client.table('stores')\
+                    .insert({'name': 'shopee', 'display_name': 'Shopee', 'is_active': True})\
+                    .execute()
+                store_id = new_store.data[0]['id']
+            
+            logger.info(f"Store ID Shopee: {store_id}")
+            
             for product in products:
                 try:
                     commission_rate = float(product.get('commissionRate', 0)) * 100
@@ -86,6 +103,7 @@ async def import_top_products() -> Dict[str, Any]:
                     # Mapeia dados para Supabase
                     product_data = {
                         'store': 'shopee',
+                        'store_id': store_id,  # FIX: Adiciona store_id obrigatório
                         'name': product.get('productName', '')[:255],
                         'shopee_product_id': product.get('itemId'),
                         'current_price': float(product.get('priceMin', 0)),
@@ -94,8 +112,8 @@ async def import_top_products() -> Dict[str, Any]:
                         'commission_amount': float(product.get('commission', 0)),
                         'affiliate_link': product.get('offerLink', ''),
                         'image_url': product.get('imageUrl', ''),
-                        'sales_count': product.get('sales', 0),
-                        'rating': float(product.get('ratingStar', 0)) if product.get('ratingStar') else None,
+                        'sales_count': int(product.get('sales', 0)),  # FIX: Converte para int
+                        'rating': int(float(product.get('ratingStar', 0))) if product.get('ratingStar') else None,  # FIX: Converte para int
                         'shop_name': product.get('shopName', ''),
                         'is_active': True,
                         'is_featured': commission_rate >= NOTIFY_HIGH_COMMISSION,
@@ -152,7 +170,7 @@ async def import_top_products() -> Dict[str, Any]:
         # Registra no log do Supabase
         try:
             supabase.client.rpc('log_shopee_sync', {
-                'p_sync_type': 'daily_import',
+                'p_sync_type': 'daily',  # FIX: Encurta para caber em varchar(20)
                 'p_products_imported': stats['imported'],
                 'p_products_updated': stats['updated'],
                 'p_errors': stats['errors'],
