@@ -1,0 +1,58 @@
+name: Shopee Daily Import
+
+on:
+  schedule:
+    # 6h BRT = 9h UTC (manhã - importa produtos frescos)
+    - cron: '0 9 * * *'
+    # 14h BRT = 17h UTC (tarde - atualiza preços e estoque)
+    - cron: '0 17 * * *'
+    # 22h BRT = 1h UTC (noite - última atualização do dia)
+    - cron: '0 1 * * *'
+  workflow_dispatch:  # Permite execução manual
+
+jobs:
+  import-shopee:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Import Shopee products
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SHOPEE_PARTNER_ID: ${{ secrets.SHOPEE_PARTNER_ID }}
+          SHOPEE_PARTNER_KEY: ${{ secrets.SHOPEE_PARTNER_KEY }}
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/afiliadohub
+          python scripts/production/shopee_daily_import.py
+      
+      - name: Upload logs (if failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopee-import-logs
+          path: |
+            *.log
+            afiliadohub.json.log
+          retention-days: 7
+          if-no-files-found: warn
