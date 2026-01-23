@@ -108,7 +108,7 @@ async def import_top_products() -> Dict[str, Any]:
                         'shopee_product_id': product.get('itemId'),
                         'current_price': float(product.get('priceMin', 0)),
                         'original_price': float(product.get('priceMax', 0)),
-                        'commission_rate': commission_rate,
+                        'commission_rate': int(round(commission_rate)),  # FIX: Converte para int (banco espera integer)
                         'commission_amount': float(product.get('commission', 0)),
                         'affiliate_link': product.get('offerLink', ''),
                         'image_url': product.get('imageUrl', ''),
@@ -175,8 +175,8 @@ async def import_top_products() -> Dict[str, Any]:
                 'p_products_updated': stats['updated'],
                 'p_errors': stats['errors'],
                 'p_metadata': {
-                    'min_commission': MIN_COMMISSION,
-                    'high_commission_count': stats['high_commission'],
+                    'min_comm': MIN_COMMISSION,  # FIX: Encurta campo
+                    'high_count': stats['high_commission'],  # FIX: Encurta campo
                     'duration': stats['duration']
                 }
             }).execute()
