@@ -34,10 +34,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configurações
-MIN_COMMISSION = float(os.getenv('SHOPEE_MIN_COMMISSION_RATE', '30.0'))
-IMPORT_LIMIT = int(os.getenv('SHOPEE_DAILY_IMPORT_LIMIT', '50'))  # API max = 50
-NOTIFY_HIGH_COMMISSION = float(os.getenv('SHOPEE_NOTIFY_COMMISSION_THRESHOLD', '50.0'))
+# Constantes
+MIN_COMMISSION = 30.0  # Comissão mínima em %
+NOTIFY_HIGH_COMMISSION = 50.0  # Comissão alta para destacar
+IMPORT_LIMIT = 50  # Limite de produtos por execução
+MIN_QUALITY_SCORE = 60  # Score mínimo de qualidade (0-100) para importar
+
+
+def calculate_quality_score(product: Dict[str, Any], commission_rate: float) -> int:
+    """
+    Calcula score de qualidade de um produto (0-100)
+    
+    Critérios:
+    - Rating (0-30 pts)
+    - Sales volume (0-30 pts)
+    - Commission rate (0-25 pts)
+    - Price stability/discount (0-15 pts)
+    """
+    score = 0
+    
+    # Rating (0-30 pontos)
+    rating = float(product.get('ratingStar', 0))
+    if rating > 0:
+        score += int((rating / 5.0) * 30)
+    
+    # Sales volume (0-30 pontos)
+    sales = int(product.get('sales', 0))
+    if sales >= 1000:
+        score += 30
+    elif sales >= 500:
+        score += 20
+    elif sales >= 100:
+        score += 10
+    elif sales >= 50:
+        score += 5
+    
+    # Commission (0-25 pontos)
+    if commission_rate >= 50:
+        score += 25
+    elif commission_rate >= 40:
+        score += 20
+    elif commission_rate >= 30:
+        score += 15
+    
+    # Price stability (0-15 pontos)
+    price_min = float(product.get('priceMin', 0))
+    price_max = float(product.get('priceMax', 0))
+    
+    if price_max > price_min:
+        discount = ((price_max - price_min) / price_max) * 100
+        if 10 <= discount <= 50:
+            score += 15
+        elif discount > 50:
+            score += 5
+    
+    return min(score, 100)
+
 
 async def import_top_products() -> Dict[str, Any]:
     """Importa produtos com alta comissão"""
@@ -50,6 +102,7 @@ async def import_top_products() -> Dict[str, Any]:
         'updated': 0,
         'high_commission': 0,
         'errors': 0,
+        'filtered_low_quality': 0,  # NEW: produtos filtrados por baixa qualidade
         'duration': 0
     }
     
@@ -100,6 +153,15 @@ async def import_top_products() -> Dict[str, Any]:
                     if commission_rate < MIN_COMMISSION:
                         continue
                     
+                    # NOVO: Calcula score de qualidade (0-100)
+                    quality_score = calculate_quality_score(product, commission_rate)
+                    
+                    # NOVO: Filtra por qualidade mínima
+                    if quality_score < MIN_QUALITY_SCORE:
+                        stats['filtered_low_quality'] += 1
+                        logger.debug(f"Produto filtrado (score={quality_score}): {product.get('productName', '')[:50]}")
+                        continue
+                    
                     # Mapeia dados para Supabase
                     product_data = {
                         'store': 'shopee',
@@ -115,6 +177,7 @@ async def import_top_products() -> Dict[str, Any]:
                         'sales_count': int(product.get('sales', 0)),  # FIX: Converte para int
                         'rating': int(float(product.get('ratingStar', 0))) if product.get('ratingStar') else None,  # FIX: Converte para int
                         'shop_name': product.get('shopName', ''),
+                        'quality_score': quality_score,  # NOVO: Salva score de qualidade
                         'is_active': True,
                         'is_featured': commission_rate >= NOTIFY_HIGH_COMMISSION,
                         'last_checked': datetime.now().isoformat()
@@ -157,12 +220,12 @@ async def import_top_products() -> Dict[str, Any]:
         # Calcula duração
         stats['duration'] = (datetime.now() - start_time).total_seconds()
         
-        # Log de sucesso
         logger.info("="*60)
         logger.info("IMPORTACAO CONCLUIDA")
         logger.info("="*60)
         logger.info(f"Produtos importados: {stats['imported']}")
         logger.info(f"Produtos atualizados: {stats['updated']}")
+        logger.info(f"Filtrados baixa qualidade: {stats['filtered_low_quality']}")  # NOVO
         logger.info(f"Alta comissao (>={NOTIFY_HIGH_COMMISSION}%): {stats['high_commission']}")
         logger.info(f"Erros: {stats['errors']}")
         logger.info(f"Duracao: {stats['duration']:.1f}s")
