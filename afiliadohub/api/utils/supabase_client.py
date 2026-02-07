@@ -560,22 +560,9 @@ class SupabaseManager:
     async def get_products_for_telegram(self, limit: int = 5, min_discount: int = 0) -> List[Dict[str, Any]]:
         """Busca produtos para enviar no Telegram, priorizando os que nunca foram enviados ou foram enviados há mais tempo"""
         try:
-            # Query que faz LEFT JOIN com product_stats e ordena por last_sent (NULL primeiro)
-            query = """
-            SELECT p.*, COALESCE(ps.last_sent, '1970-01-01'::timestamptz) as last_sent_at, COALESCE(ps.telegram_send_count, 0) as send_count
-            FROM products p
-            LEFT JOIN product_stats ps ON p.id = ps.product_id
-            WHERE p.is_active = TRUE
-            AND (p.discount_percentage >= %(min_discount)s OR %(min_discount)s = 0)
-            AND p.image_url IS NOT NULL
-            ORDER BY last_sent_at ASC, p.discount_percentage DESC NULLS LAST
-            LIMIT %(limit)s
-            """
+            from datetime import datetime
             
-            # Execute raw SQL via RPC (ou use a biblioteca diretamente se preferir)
-            # Como o Supabase não suporta raw SQL direto na lib Python facilmente, vamos usar a query builder:
-            
-            # Alternativa: usar query builder do Supabase
+            # Usa query builder do Supabase
             response = self.client.table("products")\
                 .select("*, product_stats(last_sent, telegram_send_count)")\
                 .eq("is_active", True)\
@@ -584,27 +571,45 @@ class SupabaseManager:
             if min_discount > 0:
                 response = response.gte("discount_percentage", min_discount)
             
-            # Infelizmente não conseguimos ordenar por campos de join facilmente, então vamos buscar tudo e ordenar em Python
-            response = response.limit(100).execute()
+            # Busca produtos suficientes para garantir variedade
+            response = response.limit(200).execute()
             
             if not response.data:
+                print("[WARN] Nenhum produto encontrado para Telegram")
                 return []
             
-            # Ordenar em Python por last_sent (NULL primeiro)
+            # Processar e ordenar em Python com datetime real
             products = response.data
             for p in products:
                 stats = p.get('product_stats', [])
-                if stats and len(stats) > 0:
-                    p['last_sent_at'] = stats[0].get('last_sent', '1970-01-01')
+                if stats and len(stats) > 0 and stats[0].get('last_sent'):
+                    # Parse datetime string para objeto datetime
+                    try:
+                        p['last_sent_dt'] = datetime.fromisoformat(stats[0]['last_sent'].replace('Z', '+00:00'))
+                    except:
+                        p['last_sent_dt'] = datetime(1970, 1, 1)
                     p['send_count'] = stats[0].get('telegram_send_count', 0)
                 else:
-                    p['last_sent_at'] = '1970-01-01'
+                    # Produto nunca enviado = prioridade máxima
+                    p['last_sent_dt'] = datetime(1970, 1, 1)
                     p['send_count'] = 0
             
-            # Ordenar: nunca enviados primeiro, depois por data mais antiga, depois por desconto
-            products.sort(key=lambda x: (x['last_sent_at'], -(x.get('discount_percentage') or 0)))
+            # Ordenar: nunca enviados primeiro (1970), depois por data mais antiga, depois por maior desconto
+            products.sort(key=lambda x: (
+                x['last_sent_dt'],  # Ordena por datetime (1970 = primeiro)
+                -(x.get('discount_percentage') or 0)  # Depois por maior desconto
+            ))
             
-            return products[:limit]
+            # Debug logging (primeiros 10)
+            print(f"\n[DEBUG] Top 10 produtos ordenados para Telegram:")
+            for idx, p in enumerate(products[:10], 1):
+                last_sent_str = p['last_sent_dt'].strftime('%Y-%m-%d %H:%M') if p['last_sent_dt'].year > 1970 else 'NUNCA'
+                print(f"  {idx}. ID:{p.get('id')} | Sent:{last_sent_str} | Count:{p.get('send_count', 0)} | Discount:{p.get('discount_percentage', 0)}%")
+            
+            selected = products[:limit]
+            print(f"\n[INFO] Selecionados {len(selected)} produtos para envio no Telegram\n")
+            
+            return selected
             
         except Exception as e:
             print(f"[ERRO] Erro ao buscar produtos para Telegram: {e}")
