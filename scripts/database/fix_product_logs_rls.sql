@@ -4,6 +4,7 @@
 -- Drop existing restrictive policies if any
 DROP POLICY IF EXISTS "Service role can insert product logs" ON public.product_logs;
 DROP POLICY IF EXISTS "Enable insert for service role" ON public.product_logs;
+DROP POLICY IF EXISTS "Users can read product logs" ON public.product_logs;
 
 -- Create policy to allow service_role to insert
 CREATE POLICY "Service role can insert product logs"
