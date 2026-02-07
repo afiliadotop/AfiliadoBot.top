@@ -207,29 +207,57 @@ class SupabaseManager:
     async def increment_product_stats(self, product_id: int, stat_type: str = "click_count", increment: int = 1) -> bool:
         """Incrementa estatísticas de um produto"""
         try:
-            # Usa RPC para incremento atômico
-            # IMPORTANTE: Converter para int para evitar ambiguidade UUID vs BIGINT
+            # CRÍTICO: Se for telegram_send_count, atualiza last_sent PRIMEIRO
+            if stat_type == "telegram_send_count":
+                from datetime import datetime
+                
+                # UPSERT: Cria ou atualiza registro em product_stats
+                # Primeiro tenta buscar registro existente
+                existing = self.client.table("product_stats")\
+                    .select("*")\
+                    .eq("product_id", int(product_id))\
+                    .execute()
+                
+                now = datetime.utcnow().isoformat()
+                
+                if existing.data:
+                    # Atualiza registro existente
+                    current_count = existing.data[0].get('telegram_send_count', 0)
+                    self.client.table("product_stats")\
+                        .update({
+                            "last_sent": now,
+                            "telegram_send_count": current_count + increment
+                        })\
+                        .eq("product_id", int(product_id))\
+                        .execute()
+                    print(f"[INFO] Produto {product_id} - last_sent atualizado para {now}")
+                else:
+                    # Cria novo registro
+                    self.client.table("product_stats")\
+                        .insert({
+                            "product_id": int(product_id),
+                            "last_sent": now,
+                            "telegram_send_count": increment,
+                            "click_count": 0
+                        })\
+                        .execute()
+                    print(f"[INFO] Produto {product_id} - registro criado com last_sent {now}")
+                
+                return True
+            
+            # Para outros stat_types, usa RPC normal
             response = self.client.rpc(
                 "increment_stat",
                 {
-                    "p_product_id": int(product_id),  # Garantir que é int/bigint
+                    "p_product_id": int(product_id),
                     "p_field": stat_type,
                     "p_increment": increment
                 }
             ).execute()
             
-            # CRÍTICO: Se for telegram_send_count, atualiza last_sent também
-            if stat_type == "telegram_send_count":
-                from datetime import datetime
-                self.client.table("product_stats")\
-                    .update({"last_sent": datetime.utcnow().isoformat()})\
-                    .eq("product_id", int(product_id))\
-                    .execute()
-                print(f"[INFO] Produto {product_id} - last_sent atualizado para rotação")
-            
             return True
         except Exception as e:
-            print(f"[ERRO] Erro ao incrementar estatística: {e}")
+            print(f"[ERRO] Erro ao incrementar estatística {stat_type} para produto {product_id}: {e}")
             return False
     
     async def get_daily_stats(self, date: datetime) -> Dict[str, Any]:
