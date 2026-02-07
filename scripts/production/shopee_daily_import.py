@@ -167,22 +167,23 @@ async def import_top_products() -> Dict[str, Any]:
         logger.info(f"Erros: {stats['errors']}")
         logger.info(f"Duracao: {stats['duration']:.1f}s")
         
-        # Registra no log do Supabase
-        try:
-            import json
-            supabase.client.rpc('log_shopee_sync', {
-                'p_sync_type': 'daily',
-                'p_products_imported': stats['imported'],
-                'p_products_updated': stats['updated'],
-                'p_errors': stats['errors'],
-                'p_metadata': json.dumps({  # FIX: Converte para JSON string
-                    'min_comm': MIN_COMMISSION,
-                    'high_count': stats['high_commission'],
-                    'duration': stats['duration']
-                })
-            }).execute()
-        except Exception as e:
-            logger.warning(f"Erro ao registrar log: {e}")
+        # Registra no log do Supabase (DESABILITADO - causa erro RLS)
+        # TODO: Corrigir RLS policy em shopee_sync_log antes de reativar
+        # try:
+        #     import json
+        #     supabase.client.rpc('log_shopee_sync', {
+        #         'p_sync_type': 'daily',
+        #         'p_products_imported': stats['imported'],
+        #         'p_products_updated': stats['updated'],
+        #         'p_errors': stats['errors'],
+        #         'p_metadata': json.dumps({
+        #             'min_comm': MIN_COMMISSION,
+        #             'high_count': stats['high_commission'],
+        #             'duration': stats['duration']
+        #         })
+        #     }).execute()
+        # except Exception as e:
+        #     logger.warning(f"Erro ao registrar log: {e}")
         
         return stats
         
