@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Plus, Filter, Trash2, Edit, Package } from "lucide-react";
+import { Search, Plus, Filter, Trash2, Edit, Package, Send } from "lucide-react";
 import { Skeleton } from "../ui/Skeleton";
 import { PageTransition } from "../layout/PageTransition";
 import { useProducts, Product } from "../../hooks/useProducts";
@@ -50,6 +50,36 @@ export const Products = () => {
             return await updateProduct(editingProduct.id, productData);
         } else {
             return await createProduct(productData);
+        }
+    };
+
+    const handleSendToTelegram = async (product: Product) => {
+        if (!confirm(`Enviar "${product.name}" para o Telegram?`)) {
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch('http://localhost:8000/api/telegram/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    product_id: product.id
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.detail || 'Erro ao enviar para Telegram');
+            }
+
+            alert('✅ Produto enviado para o Telegram com sucesso!');
+        } catch (error: any) {
+            alert('❌ ' + (error.message || 'Erro ao enviar para Telegram'));
         }
     };
 
@@ -216,6 +246,14 @@ export const Products = () => {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <div className="flex gap-2 justify-end">
+                                                    <button
+                                                        onClick={() => handleSendToTelegram(p)}
+                                                        className="text-blue-600 hover:text-blue-500 transition-colors"
+                                                        title="Enviar para Telegram"
+                                                        aria-label={`Enviar ${p?.name || 'produto'} para Telegram`}
+                                                    >
+                                                        <Send size={16} />
+                                                    </button>
                                                     <button
                                                         onClick={() => handleOpenModal(p)}
                                                         className="text-indigo-600 hover:text-indigo-500 transition-colors"

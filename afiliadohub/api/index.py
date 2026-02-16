@@ -26,6 +26,7 @@ from .handlers.competition_analysis import CompetitionAnalyzer
 from .handlers.advanced_analytics import AdvancedAnalytics
 from .handlers.export_reports import ReportExporter
 from .handlers.health import router as health_router
+from .handlers.analytics_api import router as analytics_router  # NEW: Analytics API
 from .utils.supabase_client import get_supabase_manager
 from .utils.logger import setup_logger
 from .utils.scheduler import scheduler
@@ -112,6 +113,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# ==================== ROUTERS ====================
+# Register API routers
+app.include_router(analytics_router)  # Analytics endpoints: /analytics/*
+app.include_router(health_router)  # Health check: /health
+
 
 # ==================== MODELOS PYDANTIC ====================
 
