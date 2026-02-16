@@ -61,7 +61,7 @@ export const Products = () => {
         }
 
         try {
-            const response = await api.post<{ message: string }>('/telegram/send', {
+            const response = await api.post('/telegram/send', {
                 product_id: product.id
             });
 
