@@ -38,6 +38,9 @@ const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Pro
 
 const ImportCsv = lazy(() => import('./pages/ImportCsv'));
 
+// Analytics page
+const Analytics = lazy(() => import('./pages/Analytics'));
+
 // SaaS pages
 const Pricing = lazy(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
 
@@ -80,6 +83,7 @@ function App() {
                                         <Route path="settings" element={<Placeholder title="Configurações" />} />
                                         <Route path="shopee" element={<ShopeeAdmin />} />
                                         <Route path="shopee/feeds" element={<ShopeeFeeds />} />
+                                        <Route path="analytics" element={<Analytics />} />
                                         <Route path="profile" element={<Profile />} />
                                     </Route>
                                 </Route>
