@@ -5,6 +5,8 @@ import { PageTransition } from "../layout/PageTransition";
 import { useProducts, Product } from "../../hooks/useProducts";
 import { ProductModal } from "./ProductModal";
 import { EmptyState } from "../ui/EmptyState";
+import { api } from "../../services/api";
+import { toast } from "sonner";
 
 export const Products = () => {
     const { products, loading, createProduct, updateProduct, deleteProduct } = useProducts();
@@ -59,27 +61,16 @@ export const Products = () => {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/api/telegram/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    product_id: product.id
-                })
+            const response = await api.post<{ message: string }>('/telegram/send', {
+                product_id: product.id
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Erro ao enviar para Telegram');
+            if (response) {
+                toast.success('✅ Produto enviado para o Telegram com sucesso!');
             }
-
-            alert('✅ Produto enviado para o Telegram com sucesso!');
         } catch (error: any) {
-            alert('❌ ' + (error.message || 'Erro ao enviar para Telegram'));
+            // Error already handled by api service with toast
+            console.error('Erro ao enviar para Telegram:', error);
         }
     };
 
