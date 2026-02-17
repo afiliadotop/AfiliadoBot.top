@@ -185,78 +185,9 @@ async def health_check():
         "bot": "ready" if telegram_app else "not_configured"
     }
 
-@app.get("/api/debug/ip")
-async def debug_ip_info(request: Request):
-    """
-    Endpoint de debug para descobrir IP público do servidor
-    IMPORTANTE: Remover em produção após configurar whitelist Shopee
-    """
-    import socket
-    import httpx
-    
-    # IP do cliente que fez request
-    client_ip = request.client.host if request.client else "unknown"
-    
-    # Descobre IP público consultando serviço externo
-    public_ip = "unknown"
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get("https://api.ipify.org?format=json")
-            if response.status_code == 200:
-                public_ip = response.json().get("ip", "unknown")
-    except Exception as e:
-        logger.error(f"[Debug IP] Erro ao obter IP público: {e}")
-        # Fallback: tenta outro serviço
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("https://icanhazip.com")
-                if response.status_code == 200:
-                    public_ip = response.text.strip()
-        except:
-            pass
-    
-    # IP local do servidor (privado)
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
-    except:
-        local_ip = "unable_to_detect"
-    
-    # Hostname
-    try:
-        hostname = socket.gethostname()
-    except:
-        hostname = "unknown"
-    
-    # Headers
-    forwarded_for = request.headers.get("X-Forwarded-For", "not_set")
-    real_ip = request.headers.get("X-Real-IP", "not_set")
-    
-    return {
-        "message": "⚠️ ATENÇÃO: Use o PUBLIC_IP na whitelist Shopee!",
-        "server_info": {
-            "hostname": hostname,
-            "local_ip": local_ip,
-            "public_ip": public_ip,  # ← ESTE É O IMPORTANTE!
-            "environment": os.getenv("RENDER", "local")
-        },
-        "request_info": {
-            "client_ip": client_ip,
-            "x_forwarded_for": forwarded_for,
-            "x_real_ip": real_ip
-        },
-        "instructions": {
-            "step_1": "Acesse https://affiliate.shopee.com.br/partners",
-            "step_2": "Vá em 'Meus Apps' > App ID: 18353920154",
-            "step_3": "Clique em 'IP Address Whitelist' → Edit",
-            "step_4": f"⚠️ ADICIONE ESTE IP: {public_ip}",
-            "step_5": "Salve e aguarde 1-2 minutos",
-            "step_6": "Teste: https://afiliadobot.onrender.com/api/shopee/products?limit=5"
-        },
-        "warning": f"O local_ip ({local_ip}) é PRIVADO. Use apenas o public_ip ({public_ip})!"
-    }
+# Debug endpoint removed for security reasons
+# The Shopee Affiliate API does not require IP whitelisting
+# If needed in future, protect with ADMIN_API_KEY authentication
 
 
 # ==================== ROTAS DE PRODUTOS ====================
