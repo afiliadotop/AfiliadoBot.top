@@ -20,9 +20,9 @@ export const TelegramSettings = () => {
 
     const fetchSettings = async () => {
         try {
-            const response = await api.get('/telegram/settings');
-            setCurrentSettings(response.data.settings);
-            setGroupChatId(response.data.settings?.group_chat_id || '');
+            const response = await api.get<{ settings?: { group_chat_id?: string; bot_token_masked?: string; updated_at?: string } }>('/telegram/settings');
+            setCurrentSettings(response?.settings);
+            setGroupChatId(response?.settings?.group_chat_id || '');
         } catch (error: any) {
             console.error('Error loading settings:', error);
             toast.error('Erro ao carregar configurações');
@@ -31,8 +31,8 @@ export const TelegramSettings = () => {
 
     const fetchStatus = async () => {
         try {
-            const response = await api.get('/telegram/settings/status');
-            setStatus(response.data.status);
+            const response = await api.get<{ status?: { is_configured: boolean; has_bot_token: boolean; has_group_chat_id: boolean; test_bot_username?: string; cache_age_seconds?: number } }>('/telegram/settings/status');
+            setStatus(response?.status);
         } catch (error: any) {
             console.error('Error loading status:', error);
         }
@@ -65,7 +65,7 @@ export const TelegramSettings = () => {
                 group_chat_id: groupChatId
             });
 
-            toast.success(`✅ ${response.data.message}`);
+            toast.success(`✅ ${response?.message || 'Teste realizado com sucesso!'}`);
         } catch (error: any) {
             toast.error(error.response?.data?.detail || 'Erro ao testar conexão');
         } finally {
