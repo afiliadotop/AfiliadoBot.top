@@ -188,42 +188,58 @@ async def health_check():
 @app.get("/api/debug/ip")
 async def debug_ip_info(request: Request):
     """
-    Endpoint de debug para descobrir IP do servidor
+    Endpoint de debug para descobrir IP público do servidor
     IMPORTANTE: Remover em produção após configurar whitelist Shopee
     """
     import socket
+    import httpx
     
-    # IP do cliente que fez request (geralmente proxy/load balancer)
+    # IP do cliente que fez request
     client_ip = request.client.host if request.client else "unknown"
     
-    # IP real do servidor (outbound)
+    # Descobre IP público consultando serviço externo
+    public_ip = "unknown"
     try:
-        # Tenta conectar ao Google DNS para descobrir IP de saída
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get("https://api.ipify.org?format=json")
+            if response.status_code == 200:
+                public_ip = response.json().get("ip", "unknown")
+    except Exception as e:
+        logger.error(f"[Debug IP] Erro ao obter IP público: {e}")
+        # Fallback: tenta outro serviço
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get("https://icanhazip.com")
+                if response.status_code == 200:
+                    public_ip = response.text.strip()
+        except:
+            pass
+    
+    # IP local do servidor (privado)
+    try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        server_outbound_ip = s.getsockname()[0]
+        local_ip = s.getsockname()[0]
         s.close()
     except:
-        server_outbound_ip = "unable_to_detect"
+        local_ip = "unable_to_detect"
     
-    # Hostname do servidor
+    # Hostname
     try:
         hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
     except:
         hostname = "unknown"
-        local_ip = "unknown"
     
-    # Headers úteis
+    # Headers
     forwarded_for = request.headers.get("X-Forwarded-For", "not_set")
     real_ip = request.headers.get("X-Real-IP", "not_set")
     
     return {
-        "message": "Use estes IPs na whitelist do Shopee Partner Hub",
+        "message": "⚠️ ATENÇÃO: Use o PUBLIC_IP na whitelist Shopee!",
         "server_info": {
             "hostname": hostname,
             "local_ip": local_ip,
-            "outbound_ip": server_outbound_ip,
+            "public_ip": public_ip,  # ← ESTE É O IMPORTANTE!
             "environment": os.getenv("RENDER", "local")
         },
         "request_info": {
@@ -234,10 +250,12 @@ async def debug_ip_info(request: Request):
         "instructions": {
             "step_1": "Acesse https://affiliate.shopee.com.br/partners",
             "step_2": "Vá em 'Meus Apps' > App ID: 18353920154",
-            "step_3": "Clique em 'IP Address Whitelist'",
-            "step_4": f"Adicione o IP: {server_outbound_ip}",
-            "step_5": "Aguarde 1-2 minutos e teste novamente"
-        }
+            "step_3": "Clique em 'IP Address Whitelist' → Edit",
+            "step_4": f"⚠️ ADICIONE ESTE IP: {public_ip}",
+            "step_5": "Salve e aguarde 1-2 minutos",
+            "step_6": "Teste: https://afiliadobot.onrender.com/api/shopee/products?limit=5"
+        },
+        "warning": f"O local_ip ({local_ip}) é PRIVADO. Use apenas o public_ip ({public_ip})!"
     }
 
 
