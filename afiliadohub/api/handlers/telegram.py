@@ -934,51 +934,80 @@ Configure suas preferências para receber recomendações personalizadas!
     # ==================== MÉTODOS UTILITÁRIOS ====================
     
     def _format_product_message(self, product: Dict[str, Any], highlight: bool = False) -> str:
-        """Formata mensagem do produto para Telegram"""
-        store = product.get("store", "shopee")
+        """Formata mensagem usando AIDA (Attention, Interest, Desire, Action) + Gatilhos Mentais"""
+        
+        store = product.get('store', 'shopee')
         emoji = STORE_EMOJIS.get(store, '🏪')
         store_name = store.replace('_', ' ').title()
         
-        # Formata preço
-        price = product.get("current_price", 0)
-        original_price = product.get("original_price")
-        discount = product.get("discount_percentage")
+        price = product.get('current_price', 0)
+        original_price = product.get('original_price')
+        discount = product.get('discount_percentage', 0)
         
-        price_text = f"R$ {price:,.2f}".replace(',', 'v').replace('.', ',').replace('v', '.')
+        # ========== ATTENTION: Headline impactante ==========
+        if discount and discount > 0:
+            headline = f"🔥 SUPER DESCONTO {int(discount)}% OFF! 🔥"
+        else:
+            headline = f"✨ OFERTA ESPECIAL {emoji}"
         
-        if original_price and discount:
-            original_text = f"R$ {original_price:,.2f}".replace(',', 'v').replace('.', ',').replace('v', '.')
-            price_text = f"~~{original_text}~~ → {price_text} ({discount}% OFF)"
+        if highlight:
+            headline = f"⚡ IMPERDÍVEL! " + headline
         
-        # Formata mensagem
-        message = f"""
-{emoji} *{store_name}*
+        # ========== INTEREST: Nome do produto ==========
+        product_name = product.get('name', 'Produto')
+        if len(product_name) > 80:
+            product_name = f"👜 {product_name[:80]}..."
+        else:
+            product_name = f"👜 {product_name}"
         
-🛍️ *{product.get('name', 'Produto')}*
-
-💰 *Preço:* {price_text}
-📦 *Categoria:* {product.get('category', 'Não informada')}
-⭐ *Avaliação:* {product.get('rating', 'N/A')}/5 ({product.get('review_count', 0)} reviews)
-
-🔗 [Ver Produto]({product.get('affiliate_link')})
-        """
+        # ========== DESIRE: Preço e economia (Gatilho de Escassez) ==========
+        price_section = f"\n💰 Apenas R$ {price:.2f}"
         
-        # Adiciona cupom se existir
+        if original_price and original_price > price and discount:
+            savings = original_price - price
+            price_section += f"\n📉 De ~~R$ {original_price:.2f}~~"
+            price_section += f"\n✅ Economize R$ {savings:.2f} HOJE!"
+        
+        # ========== DESIRE: Benefícios e social proof (Gatilhos de Autoridade + Prova Social) ==========
+        benefits = f"""
+✨ Por que você vai amar:
+✔️ Seleção premium AfiliadoTop
+✔️ Loja 100% Verificada e Segura  
+✔️ Melhor preço garantido hoje
+🚚 Entrega rápida em todo o Brasil"""
+        
+        # Adiciona avaliação se existir (Prova Social)
+        rating = product.get('rating')
+        review_count = product.get('review_count', 0)
+        if rating and rating > 0:
+            stars = '⭐' * int(rating)
+            benefits += f"\n{stars} {rating}/5 ({review_count:,} avaliações)"
+        
+        # ========== ACTION: Call to action urgente (Gatilho de Urgência) ==========
+        cta = f"\n\n🛒 COMPRAR AGORA COM DESCONTO!"
+        
+        # Adiciona cupom se existir (Gatilho de Exclusividade)
         coupon = product.get("coupon_code")
         if coupon:
             expiry = product.get("coupon_expiry")
             expiry_text = f" (Válido até {expiry[:10]})" if expiry else ""
-            message += f"\n🎫 *Cupom:* `{coupon}`{expiry_text}"
+            cta += f"\n🎫 CUPOM EXCLUSIVO: `{coupon}`{expiry_text}"
         
-        # Adiciona destaque se for promoção
-        if highlight:
-            message = f"🔥 *PROMOÇÃO EM DESTAQUE!*\n" + message
+        # Link de afiliado
+        link_text = f"\n🔗 Ver Produto: {product.get('affiliate_link')}"
         
-        # Adiciona tags se existirem
-        tags = product.get("tags", [])
-        if tags:
-            tags_text = " ".join([f"#{tag}" for tag in tags[:3]])
-            message += f"\n🏷️ {tags_text}"
+        # Adiciona categoria e tags
+        category = product.get('category', '')
+        tags = product.get('tags', [])
+        if category or tags:
+            meta = f"\n\n📁 {category}" if category else ""
+            if tags:
+                tags_text = " ".join([f"#{tag}" for tag in tags[:3]])
+                meta += f" {tags_text}" if meta else f"\n\n{tags_text}"
+            link_text += meta
+        
+        # Montar mensagem completa
+        message = f"{headline}\n\n{product_name}\n{price_section}\n{benefits}\n{cta}\n{link_text}"
         
         return message.strip()
     
