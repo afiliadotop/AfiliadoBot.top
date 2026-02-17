@@ -61,8 +61,20 @@ export const Products = () => {
         }
 
         try {
+            // First, get the Telegram channel chat_id from settings
+            const settingsResponse = await api.get<{ settings?: { group_chat_id?: string } }>('/telegram/status');
+
+            if (!settingsResponse?.settings?.group_chat_id) {
+                toast.error('❌ Configure o Chat ID do Telegram primeiro em Configurações → Telegram');
+                return;
+            }
+
+            const chat_id = settingsResponse.settings.group_chat_id;
+
+            // Now send the product with chat_id
             const response = await api.post('/telegram/send', {
-                product_id: product.id
+                product_id: product.id,
+                chat_id: chat_id
             });
 
             if (response) {
