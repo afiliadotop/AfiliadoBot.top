@@ -185,6 +185,62 @@ async def health_check():
         "bot": "ready" if telegram_app else "not_configured"
     }
 
+@app.get("/api/debug/ip")
+async def debug_ip_info(request: Request):
+    """
+    Endpoint de debug para descobrir IP do servidor
+    IMPORTANTE: Remover em produção após configurar whitelist Shopee
+    """
+    import socket
+    
+    # IP do cliente que fez request (geralmente proxy/load balancer)
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # IP real do servidor (outbound)
+    try:
+        # Tenta conectar ao Google DNS para descobrir IP de saída
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        server_outbound_ip = s.getsockname()[0]
+        s.close()
+    except:
+        server_outbound_ip = "unable_to_detect"
+    
+    # Hostname do servidor
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        hostname = "unknown"
+        local_ip = "unknown"
+    
+    # Headers úteis
+    forwarded_for = request.headers.get("X-Forwarded-For", "not_set")
+    real_ip = request.headers.get("X-Real-IP", "not_set")
+    
+    return {
+        "message": "Use estes IPs na whitelist do Shopee Partner Hub",
+        "server_info": {
+            "hostname": hostname,
+            "local_ip": local_ip,
+            "outbound_ip": server_outbound_ip,
+            "environment": os.getenv("RENDER", "local")
+        },
+        "request_info": {
+            "client_ip": client_ip,
+            "x_forwarded_for": forwarded_for,
+            "x_real_ip": real_ip
+        },
+        "instructions": {
+            "step_1": "Acesse https://affiliate.shopee.com.br/partners",
+            "step_2": "Vá em 'Meus Apps' > App ID: 18353920154",
+            "step_3": "Clique em 'IP Address Whitelist'",
+            "step_4": f"Adicione o IP: {server_outbound_ip}",
+            "step_5": "Aguarde 1-2 minutos e teste novamente"
+        }
+    }
+
+
 # ==================== ROTAS DE PRODUTOS ====================
 
 @app.post("/api/products", dependencies=[Depends(verify_admin_token)])
