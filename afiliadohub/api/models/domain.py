@@ -109,3 +109,41 @@ class ProductFilter(BaseModel):
     active: Optional[bool] = True
     min_commission: Optional[float] = Field(None, ge=0, le=100)
     tags: Optional[List[str]] = None
+
+
+class PriceHistory(BaseModel):
+    """Price history entry for a product — used for fake-discount detection"""
+    id: Optional[int] = None
+    product_id: int = Field(..., description="FK to products.id")
+    price: float = Field(..., gt=0, description="Scraped price in BRL")
+    cep: Optional[str] = Field(None, max_length=8, description="CEP for freight calc")
+    source: str = Field(default="scraper", description="Origin: scraper | manual | api")
+    scraped_at: Optional[datetime] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "product_id": 42,
+                "price": 1299.90,
+                "cep": "01310100",
+                "source": "scraper"
+            }
+        }
+
+
+class AffiliateLinkResult(BaseModel):
+    """Result of affiliate link generation"""
+    monetized_product_url: str = Field(..., description="Product URL with affiliate tag injected")
+    internal_click_url: str = Field(..., description="Internal redirect: afiliado.top/go/{offer_id}")
+    store_name: str
+    offer_id: str
+
+
+class DiscountAnalysis(BaseModel):
+    """Result of fake-discount detection (skill_detect_fake_discount)"""
+    is_fake_discount: bool = Field(..., description="True if declared price was inflated")
+    declared_from_price: float = Field(..., description="Original price as shown by the store")
+    adjusted_from_price: float = Field(..., description="Price corrected by historical average")
+    current_price: float
+    real_discount_percentage: float = Field(..., description="Actual discount % vs adjusted price")
+    historical_average_price: float

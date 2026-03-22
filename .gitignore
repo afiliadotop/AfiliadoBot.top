@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+afiliadohub.json.log
 
 node_modules
 dist
@@ -22,13 +23,26 @@ dist-ssr
 *.njsproj
 *.sln
 
-# Security - Environment Files
+# =====================================================
+# 🔐 SECURITY — Variáveis de ambiente & credenciais
+# =====================================================
 .env
 .env.*
+!.env.example
 .env.test
 .env.production
 .env.local
 .env.development
+
+# Tokens OAuth & chaves em JSON (NUNCA vão ao Git)
+meli_token.json
+ml_pkce.json
+*_token.json
+*_secret.json
+*_credentials.json
+secrets.json
+credentials.json
+service_account.json
 
 # Security - Configuration Scripts (may contain tokens/secrets)
 **/configure-*.ps1
@@ -36,18 +50,44 @@ dist-ssr
 **/*-credentials.*
 **/*-secrets.*
 
-
+# =====================================================
 # Python
+# =====================================================
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+.eggs/
+*.egg
+dist/
+build/
 venv/
 .venv/
+ENV/
+.python-version
 
+# Testing & Coverage
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+coverage.xml
+nosetests.xml
+
+# Type checking
+.mypy_cache/
+.ruff_cache/
+
+# =====================================================
 # Testing & Playwright
+# =====================================================
 test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
-.pytest_cache/
-coverage/
+
+# =====================================================
+# Deploy
+# =====================================================
+.render/
+

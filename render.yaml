@@ -2,12 +2,54 @@ services:
   - type: web
     name: afiliadobot-backend
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn api.index:app --host 0.0.0.0 --port 10000
+    buildCommand: pip install -r afiliadohub/requirements.txt
+    startCommand: uvicorn afiliadohub.api.index:app --host 0.0.0.0 --port 10000
     envVars:
       - key: PYTHON_VERSION
-        value: 3.9.0
+        value: "3.12"
+      # Supabase
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      # Segurança
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: CRON_TOKEN
+        sync: false
+      # Telegram
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      # Mercado Livre
+      - key: ML_APP_ID
+        sync: false
+      - key: ML_SECRET_KEY
+        sync: false
+      - key: ML_ACCESS_TOKEN
+        sync: false
+      - key: ML_REFRESH_TOKEN
+        sync: false
+      - key: ML_AFFILIATE_ID
+        value: afiliadotop
+      # Shopee
+      - key: SHOPEE_APP_ID
+        sync: false
+      - key: SHOPEE_APP_SECRET
+        sync: false
+      - key: SHOPEE_AFFILIATE_ID
+        sync: false
+      # Amazon
+      - key: AMAZON_AFFILIATE_TAG
+        value: afiliadotop-20
+      # AliExpress
+      - key: ALIEXPRESS_AFFILIATE_ID
+        sync: false
+      # Affiliate Bot Tools
+      - key: FAKE_DISCOUNT_THRESHOLD
+        value: "1.1"
+      - key: INTERNAL_REDIRECT_BASE
+        value: https://afiliado.top/go
+      # Runtime
+      - key: RUN_SCHEDULER
+        value: "false"
+

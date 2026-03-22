@@ -94,3 +94,35 @@ def sample_products_list():
             "active": True
         }
     ]
+
+
+# ---------------------------------------------------------------------------
+# Affiliate Bot Tools fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def affiliate_service():
+    """AffiliateService instance (stateless — no deps needed)"""
+    from afiliadohub.api.services.affiliate_service import AffiliateService
+    return AffiliateService()
+
+
+@pytest.fixture
+def price_history_repository(mock_supabase_client):
+    """PriceHistoryRepository with mocked Supabase client"""
+    from afiliadohub.api.repositories.price_history_repository import PriceHistoryRepository
+    return PriceHistoryRepository(mock_supabase_client)
+
+
+@pytest.fixture
+def sample_price_history():
+    """Sample price history row for testing"""
+    from datetime import datetime, timezone
+    return {
+        "id": 1,
+        "product_id": 1,
+        "price": 1299.90,
+        "cep": "01310100",
+        "source": "scraper",
+        "scraped_at": datetime.now(tz=timezone.utc).isoformat(),
+    }

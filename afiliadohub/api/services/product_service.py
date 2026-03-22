@@ -6,6 +6,8 @@ from typing import List, Optional, Dict, Any
 from .base_service import BaseService
 from ..models.domain import Product, ProductCreate, ProductUpdate, ProductFilter
 from ..repositories.product_repository import ProductRepository
+from ..repositories.price_history_repository import PriceHistoryRepository
+from ..services.affiliate_service import AffiliateService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,10 +15,17 @@ logger = logging.getLogger(__name__)
 
 class ProductService(BaseService[Product]):
     """Service for product business logic"""
-    
-    def __init__(self, repository: ProductRepository):
+
+    def __init__(
+        self,
+        repository: ProductRepository,
+        affiliate_service: Optional[AffiliateService] = None,
+        price_history_repo: Optional[PriceHistoryRepository] = None,
+    ):
         super().__init__(repository)
         self.repository: ProductRepository = repository
+        self.affiliate_service: AffiliateService = affiliate_service or AffiliateService()
+        self.price_history_repo: Optional[PriceHistoryRepository] = price_history_repo
     
     def get_product_by_id(self, product_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -201,27 +210,54 @@ class ProductService(BaseService[Product]):
     def _enrich_product(self, product: dict) -> dict:
         """
         Enrich product data with calculated fields.
-        
+
+        Uses AffiliateService.detect_fake_discount() when price history is
+        available, falling back to a simple calculation otherwise.
+
         Args:
             product: Raw product data
-            
+
         Returns:
-            Enriched product
+            Enriched product with discount_percent, estimated_commission,
+            and optional discount_analysis fields
         """
         if not product:
             return product
-        
-        # Calculate discount %
-        if product.get("original_price") and product.get("current_price"):
-            original = product["original_price"]
-            current = product["current_price"]
-            if original > current:
-                discount_pct = ((original - current) / original) * 100
-                product["discount_percent"] = round(discount_pct, 2)
-        
+
+        current_price: Optional[float] = product.get("current_price")
+        original_price: Optional[float] = product.get("original_price")
+        product_id: Optional[int] = product.get("id")
+
+        if current_price and original_price:
+            # --- Try fake-discount detection if price history is available ---
+            historical_avg = 0.0
+            if self.price_history_repo and product_id:
+                try:
+                    historical_avg = self.price_history_repo.get_historical_average(product_id)
+                except Exception as exc:
+                    logger.warning(
+                        f"[ProductService] Could not fetch historical avg for {product_id}: {exc}"
+                    )
+
+            try:
+                analysis = self.affiliate_service.detect_fake_discount(
+                    current_price=float(current_price),
+                    declared_from_price=float(original_price),
+                    historical_average_price=historical_avg,
+                )
+                product["discount_percent"] = analysis.real_discount_percentage
+                product["is_fake_discount"] = analysis.is_fake_discount
+                product["adjusted_from_price"] = analysis.adjusted_from_price
+            except Exception as exc:
+                logger.warning(f"[ProductService] Discount analysis failed: {exc}")
+                # Fallback to simple calculation
+                if original_price > current_price:
+                    pct = ((original_price - current_price) / original_price) * 100
+                    product["discount_percent"] = round(pct, 2)
+
         # Calculate estimated commission
-        if product.get("commission_rate") and product.get("current_price"):
-            commission = (product["current_price"] * product["commission_rate"]) / 100
+        if product.get("commission_rate") and current_price:
+            commission = (float(current_price) * float(product["commission_rate"])) / 100
             product["estimated_commission"] = round(commission, 2)
-        
+
         return product

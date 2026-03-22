@@ -262,6 +262,7 @@ from .handlers.products import router as products_router
 from .handlers.shopee_api import router as shopee_router
 from .handlers.mercadolivre_api import router as mercadolivre_router
 from .handlers.telegram_settings import router as telegram_settings_router
+from .handlers.affiliate_api import router as affiliate_router
 
 # Mercado Livre OAuth Callback (temporário para obter tokens)
 @app.get("/api/ml/callback")
@@ -311,6 +312,7 @@ app.include_router(products_router, prefix="/api")
 app.include_router(shopee_router, prefix="/api")
 app.include_router(mercadolivre_router, prefix="/api")
 app.include_router(telegram_settings_router, prefix="/api")
+app.include_router(affiliate_router, prefix="/api")  # Affiliate bot-tools endpoints
 
 # Feed Router
 from .handlers.feed_api import router as feed_router

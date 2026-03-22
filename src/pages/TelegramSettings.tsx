@@ -60,7 +60,7 @@ export const TelegramSettings = () => {
 
         setTesting(true);
         try {
-            const response = await api.post('/telegram/settings/test', {
+            const response = await api.post<{ message?: string }>('/telegram/settings/test', {
                 bot_token: botToken,
                 group_chat_id: groupChatId
             });
