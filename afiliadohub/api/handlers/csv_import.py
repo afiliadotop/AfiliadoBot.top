@@ -175,7 +175,12 @@ class CSVImporter:
             )
 
             # --- DISCOUNT ---
-            disc_keys = ["discount", "desconto", "discount_percentage"]
+            disc_keys = [
+                "discount",
+                "desconto",
+                "discount_percentage",
+                "savings_percent",
+            ]
             discount_raw = next(
                 (
                     row_dict[k]
@@ -210,10 +215,11 @@ class CSVImporter:
 
     async def process_csv_upload(
         self,
-        file_content: io.BytesIO,
+        file_content: Any,  # Permite str (path) ou io.BytesIO
         store: str,
         replace_existing: bool = False,
         send_to_telegram: bool = False,
+        compression: str = "infer",
     ):
         """Processa upload de CSV em chunks para evitar estouro de memória"""
         try:
@@ -239,10 +245,12 @@ class CSVImporter:
 
             # Lê o CSV em chunks (iterador)
             # Use encoding='utf-8' ou 'latin-1' dependendo do arquivo, mas pandas geralmente detecta bem
-            chunks = pd.read_csv(file_content, chunksize=chunk_size)
+            chunks = pd.read_csv(
+                file_content, chunksize=chunk_size, compression=compression
+            )
 
             logger.info(
-                f"📥 Iniciando importação em stream (chunk_size={chunk_size}), loja: {store}"
+                f"📥 Iniciando importação em stream (chunk_size={chunk_size}), loja: {store}, compression={compression}"
             )
 
             for chunk_idx, df in enumerate(chunks):
@@ -380,8 +388,19 @@ async def import_awin_feed(url: str, token: Optional[str] = None):
     try:
         logger.info(f"🔄 Baixando Feed Awin: {url}")
 
+        # Determina a compressão da URL
+        comp_type = "infer"
+        if "compression/zip" in url.lower():
+            comp_type = "zip"
+            suffix = ".zip"
+        elif "compression/gzip" in url.lower():
+            comp_type = "gzip"
+            suffix = ".gz"
+        else:
+            suffix = ".csv"
+
         # Cria arquivo temporário para não saturar memória
-        fd, temp_path = tempfile.mkstemp(suffix=".csv")
+        fd, temp_path = tempfile.mkstemp(suffix=suffix)
 
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, stream=True, timeout=120)
@@ -395,15 +414,14 @@ async def import_awin_feed(url: str, token: Optional[str] = None):
 
         logger.info(f"✅ Feed Awin baixado para arquivo local: {temp_path}")
 
-        # Processa usando o temp_path
-        # No pd.read_csv com filepath ele não joga tudo pra RAM
-        with open(temp_path, "rb") as f_in:
-            importer = CSVImporter(token=token)
-            stats = await importer.process_csv_upload(
-                f_in,
-                store="awin",  # _parse_csv_row pegará "merchant_name" se existir
-                replace_existing=False,
-            )
+        # Processa passando o caminho da string direto, assim o pandas usa o comp_type
+        importer = CSVImporter(token=token)
+        stats = await importer.process_csv_upload(
+            temp_path,
+            store="awin",  # _parse_csv_row pegará "merchant_name" se existir
+            replace_existing=False,
+            compression=comp_type,
+        )
 
         logger.info(f"[OK] Feed Awin importado: {stats}")
 
