@@ -42,6 +42,172 @@ class CSVImporter:
             logger.warning(f"Erro ao carregar stores: {e}")
             return {}
 
+    def _parse_csv_row(self, row, default_store: str) -> Optional[Dict[str, Any]]:
+        """Mapeia uma linha do CSV (Pandas Series) para as colunas da tabela products"""
+        try:
+            # Converte a linha inteira para dicionário lowercase-keys para facilitar a busca
+            row_dict = {str(k).lower().strip(): v for k, v in row.to_dict().items()}
+
+            # --- PRODUCT NAME ---
+            name_keys = [
+                "product name",
+                "product_name",
+                "nome do produto",
+                "name",
+                "titulo",
+                "title",
+            ]
+            name = next(
+                (
+                    row_dict[k]
+                    for k in name_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                None,
+            )
+            if not name:
+                return None  # Produto sem nome não é salvo
+
+            # --- STORE / MERCHANT ---
+            merchant_keys = [
+                "merchant name",
+                "merchant_name",
+                "loja",
+                "store",
+                "advertiser",
+            ]
+            merchant_name = next(
+                (
+                    row_dict[k]
+                    for k in merchant_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                default_store,
+            )
+
+            # Usa o lower case name da store real, se aplicável
+            store = merchant_name.lower().strip()
+
+            # --- PRICE ---
+            price_keys = [
+                "search_price",
+                "store price",
+                "price",
+                "preço",
+                "preco",
+                "current_price",
+            ]
+            price_raw = next(
+                (
+                    row_dict[k]
+                    for k in price_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                0,
+            )
+            try:
+                # Trata "R$ 10,00" -> 10.00
+                if isinstance(price_raw, str):
+                    p_str = price_raw.replace("R$", "").replace(" ", "")
+                    # Padrão brasileiro 1.000,00 -> 1000.00
+                    p_str = p_str.replace(".", "").replace(",", ".")
+                    price = float(p_str)
+                else:
+                    price = float(price_raw)
+            except:
+                price = 0.0
+
+            # --- AFFILIATE LINK ---
+            link_keys = [
+                "awin_deep_link",
+                "awin_link",
+                "url",
+                "link",
+                "link do produto",
+                "product_url",
+                "affiliate_link",
+            ]
+            affiliate_link = next(
+                (
+                    row_dict[k]
+                    for k in link_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                None,
+            )
+            if not affiliate_link:
+                return None
+
+            # --- IMAGE URL ---
+            img_keys = [
+                "image_url",
+                "image url",
+                "url da imagem",
+                "imagem",
+                "image",
+                "merchant_image_url",
+            ]
+            image_url = next(
+                (
+                    row_dict[k]
+                    for k in img_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                None,
+            )
+            if pd.isna(image_url):
+                image_url = None
+
+            # --- CATEGORY ---
+            cat_keys = [
+                "merchant_category",
+                "merchant category",
+                "categoria",
+                "category",
+            ]
+            category = next(
+                (
+                    row_dict[k]
+                    for k in cat_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                "Geral",
+            )
+
+            # --- DISCOUNT ---
+            disc_keys = ["discount", "desconto", "discount_percentage"]
+            discount_raw = next(
+                (
+                    row_dict[k]
+                    for k in disc_keys
+                    if k in row_dict and pd.notna(row_dict[k])
+                ),
+                0,
+            )
+            try:
+                if isinstance(discount_raw, str):
+                    d_str = discount_raw.replace("%", "").strip()
+                    discount = int(float(d_str))
+                else:
+                    discount = int(discount_raw)
+            except:
+                discount = 0
+
+            return {
+                "name": str(name)[:255],
+                "store": store,
+                "current_price": price,
+                "affiliate_link": str(affiliate_link),
+                "image_url": str(image_url) if image_url else None,
+                "category": str(category)[:100],
+                "discount_percentage": discount,
+                "is_active": True,
+            }
+
+        except Exception as e:
+            logger.error(f"Erro ao fazer parse da linha CSV: {e}")
+            return None
+
     async def process_csv_upload(
         self,
         file_content: io.BytesIO,
@@ -198,4 +364,57 @@ async def import_shopee_daily_csv(url: str, token: Optional[str] = None):
 
     except Exception as e:
         logger.error(f"[ERRO] Erro ao importar CSV Shopee: {e}")
+        return None
+
+
+# Função para importação do Datafeed Awin
+async def import_awin_feed(url: str, token: Optional[str] = None):
+    """
+    Importa CSV gigante da AWIN fazendo stream para o disco primeiro e usando pandas em chunks,
+    para prevenir Out of Memory.
+    """
+    import requests
+    import os
+    import tempfile
+
+    try:
+        logger.info(f"🔄 Baixando Feed Awin: {url}")
+
+        # Cria arquivo temporário para não saturar memória
+        fd, temp_path = tempfile.mkstemp(suffix=".csv")
+
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, headers=headers, stream=True, timeout=120)
+        response.raise_for_status()
+
+        # Escreve no disco em chunks
+        with os.fdopen(fd, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        logger.info(f"✅ Feed Awin baixado para arquivo local: {temp_path}")
+
+        # Processa usando o temp_path
+        # No pd.read_csv com filepath ele não joga tudo pra RAM
+        with open(temp_path, "rb") as f_in:
+            importer = CSVImporter(token=token)
+            stats = await importer.process_csv_upload(
+                f_in,
+                store="awin",  # _parse_csv_row pegará "merchant_name" se existir
+                replace_existing=False,
+            )
+
+        logger.info(f"[OK] Feed Awin importado: {stats}")
+
+        # Remove arquivo temporário
+        try:
+            os.remove(temp_path)
+        except Exception as cleanup_err:
+            logger.warning(f"Erro ao limpar arquivo temporário do Awin: {cleanup_err}")
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"[ERRO] Erro ao importar Feed Awin: {e}")
         return None

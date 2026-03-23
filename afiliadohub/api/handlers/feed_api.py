@@ -6,7 +6,7 @@ from datetime import datetime
 
 from ..utils.supabase_client import get_supabase_manager
 from .auth import get_current_admin
-from .csv_import import import_shopee_daily_csv
+from .csv_import import import_shopee_daily_csv, import_awin_feed
 
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 logger = logging.getLogger(__name__)
@@ -122,7 +122,10 @@ async def run_feed(
         async def run_import_task(url: str, fid: str, name: str, token: str):
             logger.info(f"🚀 Starting manual feed import: {name} ({fid})")
             try:
-                stats = await import_shopee_daily_csv(url, token=token)
+                if "awin.com" in url.lower():
+                    stats = await import_awin_feed(url, token=token)
+                else:
+                    stats = await import_shopee_daily_csv(url, token=token)
 
                 status = (
                     "success"
