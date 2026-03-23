@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr, Field
+import logging
 from ..utils.supabase_client import get_supabase_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -136,6 +139,8 @@ async def get_current_user(
             "role": role,
             "token": token,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[Auth] Token decode error: {e}")
         raise HTTPException(status_code=401, detail="Token inválido")
