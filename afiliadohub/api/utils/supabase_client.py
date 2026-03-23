@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import asyncio
 
 from supabase import create_client, Client
-from supabase.lib.client_options import ClientOptions
 
 
 class SupabaseManager:
@@ -44,9 +43,11 @@ class SupabaseManager:
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_KEY")
 
-        # Cria novo client com header de autorização
-        options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
-        return create_client(url, key, options=options)
+        # Cria novo client
+        client = create_client(url, key)
+        # Define o token de autorização apenas para o PostgREST (operações de banco de dados)
+        client.postgrest.auth(token)
+        return client
 
     # ==================== MÉTODOS PARA PRODUTOS ====================
 
