@@ -115,15 +115,8 @@ async def get_current_user(
         import jwt
 
         # Supabase tokens são auto-contidos, podemos decodificar sem verificar
-        # (Em prod, deveria verificar assinatura com SUPABASE_JWT_SECRET)
+        # PyJWT valida a expiração (exp) automaticamente por padrão
         decoded = jwt.decode(token, options={"verify_signature": False})
-
-        import time
-
-        if "exp" in decoded and decoded["exp"] < time.time():
-            raise HTTPException(
-                status_code=401, detail="Sessão expirada. Faça login novamente."
-            )
 
         # SECURITY FIX: Check app_metadata first (secure)
         app_metadata = decoded.get("app_metadata", {})
@@ -139,6 +132,12 @@ async def get_current_user(
             "role": role,
             "token": token,
         }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401, detail="Sessão expirada. Faça login novamente."
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Token inválido")
     except HTTPException:
         raise
     except Exception as e:
