@@ -7,6 +7,7 @@ Exposes the affiliate-bot-tools skill capabilities as REST endpoints:
   GET  /api/products/{id}/price-history  — fetch price history
   POST /api/products/{id}/scrape  — trigger price scrape (admin)
 """
+
 import logging
 from typing import Optional
 
@@ -31,6 +32,7 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 # Dependency helpers
 # ---------------------------------------------------------------------------
 
+
 def get_affiliate_service() -> AffiliateService:
     return AffiliateService()
 
@@ -52,9 +54,12 @@ async def verify_admin(
 # Request / Response models
 # ---------------------------------------------------------------------------
 
+
 class AffiliateLinkRequest(BaseModel):
     base_url: str = Field(..., description="URL limpa do produto na loja")
-    store_name: str = Field(..., description="Nome da loja: Amazon, Shopee, Mercado Livre…")
+    store_name: str = Field(
+        ..., description="Nome da loja: Amazon, Shopee, Mercado Livre…"
+    )
     offer_id: str = Field(..., description="ID interno da oferta")
 
     class Config:
@@ -78,6 +83,7 @@ class ScrapeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/affiliate/link",
@@ -141,7 +147,9 @@ def get_price_history(
 )
 async def scrape_product_price(
     product_id: int,
-    cep: Optional[str] = Query(default=None, max_length=8, description="CEP para cálculo de frete"),
+    cep: Optional[str] = Query(
+        default=None, max_length=8, description="CEP para cálculo de frete"
+    ),
     service: AffiliateService = Depends(get_affiliate_service),
     repo: PriceHistoryRepository = Depends(get_price_history_repo),
     price_repo: PriceHistoryRepository = Depends(get_price_history_repo),
@@ -157,7 +165,9 @@ async def scrape_product_price(
     )
 
     if not product_res.data:
-        raise HTTPException(status_code=404, detail=f"Produto {product_id} não encontrado")
+        raise HTTPException(
+            status_code=404, detail=f"Produto {product_id} não encontrado"
+        )
 
     product = product_res.data[0]
     url = product.get("original_link") or product.get("affiliate_link")

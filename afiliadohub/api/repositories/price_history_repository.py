@@ -6,6 +6,7 @@ Maps to skill_save_price_history from affiliate-bot-tools skill.
 Stores per-scrape price snapshots for each product, enabling
 historical average calculations used by fake-discount detection.
 """
+
 from typing import List, Optional, Dict, Any
 from .base_repository import BaseRepository
 from ..models.domain import PriceHistory

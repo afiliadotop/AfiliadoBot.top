@@ -11,9 +11,7 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 st.set_page_config(
-    page_title="Estatísticas - AfiliadoHub",
-    page_icon="📊",
-    layout="wide"
+    page_title="Estatísticas - AfiliadoHub", page_icon="📊", layout="wide"
 )
 
 st.title("📊 Análise de Performance")
@@ -23,7 +21,7 @@ st.title("📊 Análise de Performance")
 data_vendas = {
     "Data": pd.date_range(start="2024-01-01", periods=7),
     "Vendas": [10, 15, 8, 22, 18, 25, 30],
-    "Comissao": [50, 75, 40, 110, 90, 125, 150]
+    "Comissao": [50, 75, 40, 110, 90, 125, 150],
 }
 df = pd.DataFrame(data_vendas)
 
@@ -41,9 +39,13 @@ with col2:
     st.plotly_chart(fig_comissao, use_container_width=True)
 
 st.markdown("### 🏆 Top Produtos")
-st.dataframe(pd.DataFrame({
-    "Produto": ["iPhone 15 Case", "Garrafa Térmica", "Fone Bluetooth Lenovo"],
-    "Cliques": [1500, 980, 850],
-    "Conversão": ["2.5%", "1.8%", "3.0%"]
-}), use_container_width=True)
-  
+st.dataframe(
+    pd.DataFrame(
+        {
+            "Produto": ["iPhone 15 Case", "Garrafa Térmica", "Fone Bluetooth Lenovo"],
+            "Cliques": [1500, 980, 850],
+            "Conversão": ["2.5%", "1.8%", "3.0%"],
+        }
+    ),
+    use_container_width=True,
+)

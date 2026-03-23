@@ -4,6 +4,7 @@ ITIL Activity: Plan & Improve (Quality Assurance)
 
 Covers: generate_affiliate_link, detect_fake_discount
 """
+
 import pytest
 from afiliadohub.api.services.affiliate_service import AffiliateService
 from afiliadohub.api.models.domain import AffiliateLinkResult, DiscountAnalysis
@@ -102,9 +103,7 @@ class TestFakeDiscountDetection:
         assert result.is_fake_discount is True
         assert result.adjusted_from_price == 1000.0  # capped at historical avg
 
-    def test_real_discount_within_threshold(
-        self, affiliate_service: AffiliateService
-    ):
+    def test_real_discount_within_threshold(self, affiliate_service: AffiliateService):
         """Declared price only 5% above avg → is_fake_discount=False"""
         result = affiliate_service.detect_fake_discount(
             current_price=900.0,

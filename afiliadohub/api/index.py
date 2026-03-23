@@ -10,7 +10,17 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, BackgroundTasks, Query, Form
+from fastapi import (
+    FastAPI,
+    Request,
+    HTTPException,
+    Depends,
+    UploadFile,
+    File,
+    BackgroundTasks,
+    Query,
+    Form,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -46,12 +56,13 @@ telegram_app = None
 # Security
 security = HTTPBearer()
 
+
 # --- LIFECYCLE (Inicialização Inteligente) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Startup
     logger.info("[STARTUP] Iniciando AfiliadoHub API...")
-    
+
     # Inicia Scheduler (apenas se não estiver em ambiente serverless como Vercel)
     if os.getenv("RUN_SCHEDULER", "False").lower() == "true":
         await scheduler.start()
@@ -59,14 +70,15 @@ async def lifespan(app: FastAPI):
     # Inicializa Bot Telegram (Tenta carregar configurações do banco)
     try:
         from .handlers.telegram import setup_telegram_handlers
+
         global telegram_app
-        
+
         # Tenta inicializar. Se não tiver config no banco, retorna None (sem erro)
         telegram_app = await setup_telegram_handlers()
-        
+
         if telegram_app:
             logger.info("[TELEGRAM] Bot inicializado com sucesso via banco de dados")
-            
+
             # Configura webhook para produção (Render)
             render_url = os.getenv("RENDER_EXTERNAL_URL")
             if render_url:
@@ -79,23 +91,26 @@ async def lifespan(app: FastAPI):
             else:
                 logger.info("[TELEGRAM] Modo local - sem webhook")
         else:
-            logger.warning("[TELEGRAM] Bot não inicializado (Configurações ausentes no DB)")
-            
+            logger.warning(
+                "[TELEGRAM] Bot não inicializado (Configurações ausentes no DB)"
+            )
+
     except Exception as e:
         logger.error(f"[STARTUP] Erro ao inicializar Telegram: {e}")
-        
+
     yield
-    
+
     # 2. Shutdown
     logger.info("[SHUTDOWN] Encerrando servicos...")
     await scheduler.stop()
+
 
 # Inicialização do FastAPI
 app = FastAPI(
     title="AfiliadoHub API",
     description="API para gestão de afiliados (Shopee/AliExpress/Amazon)",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS
@@ -106,7 +121,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:5173",  # Vite default
         "http://127.0.0.1:5173",
-        "*"  # Allow all for development
+        "*",  # Allow all for development
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -122,6 +137,7 @@ app.include_router(health_router)  # Health check: /health
 
 # ==================== MODELOS PYDANTIC ====================
 
+
 class ProductCreate(BaseModel):
     store: str = Field(..., description="Loja: shopee, aliexpress, etc")
     name: str = Field(..., min_length=3, max_length=500)
@@ -133,31 +149,39 @@ class ProductCreate(BaseModel):
     coupon_code: Optional[str] = None
     tags: Optional[List[str]] = []
 
+
 class TelegramMessage(BaseModel):
     chat_id: str
     message: Optional[str] = None
     product_id: Optional[int] = None
 
+
 # ==================== DEPENDÊNCIAS DE SEGURANÇA ====================
 
-async def verify_admin_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+
+async def verify_admin_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
     """Verifica token Bearer para ações administrativas"""
     if not ADMIN_API_KEY:
-        return True # Modo dev inseguro se não houver chave
+        return True  # Modo dev inseguro se não houver chave
     if credentials.credentials != ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Token de administração inválido")
     return credentials.credentials
+
 
 async def verify_cron_token(request: Request):
     """Verifica token no Header para ações agendadas (GitHub Actions)"""
     token = request.headers.get("X-CRON-TOKEN")
     if not CRON_TOKEN:
-        return True # Modo dev
+        return True  # Modo dev
     if not token or token != CRON_TOKEN:
         raise HTTPException(status_code=403, detail="Token CRON inválido")
     return True
 
+
 # ==================== ROTAS PRINCIPAIS ====================
+
 
 @app.get("/")
 async def root():
@@ -165,8 +189,9 @@ async def root():
         "status": "online",
         "service": "AfiliadoHub API",
         "timestamp": datetime.now().isoformat(),
-        "docs": "/docs"
+        "docs": "/docs",
     }
+
 
 @app.get("/health")
 async def health_check():
@@ -174,7 +199,9 @@ async def health_check():
     supabase = get_supabase_manager()
     db_status = "disconnected"
     try:
-        supabase.client.table("products").select("count", count="exact").limit(1).execute()
+        supabase.client.table("products").select("count", count="exact").limit(
+            1
+        ).execute()
         db_status = "connected"
     except:
         pass
@@ -182,8 +209,9 @@ async def health_check():
     return {
         "status": "healthy",
         "database": db_status,
-        "bot": "ready" if telegram_app else "not_configured"
+        "bot": "ready" if telegram_app else "not_configured",
     }
+
 
 # Debug endpoint removed for security reasons
 # The Shopee Affiliate API does not require IP whitelisting
@@ -192,25 +220,29 @@ async def health_check():
 
 # ==================== ROTAS DE PRODUTOS ====================
 
+
 @app.post("/api/products", dependencies=[Depends(verify_admin_token)])
 async def create_product(product: ProductCreate):
     from .handlers.products import add_product
+
     result = await add_product(product.dict())
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
 
+
 @app.get("/api/products")
 async def get_products(
-    store: Optional[str] = None,
-    limit: int = 50,
-    min_discount: int = 0
+    store: Optional[str] = None, limit: int = 50, min_discount: int = 0
 ):
     from .handlers.products import search_products
+
     filters = {"store": store, "limit": limit, "min_discount": min_discount}
     return await search_products(filters)
 
+
 # ==================== TELEGRAM WEBHOOK ====================
+
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
@@ -218,41 +250,48 @@ async def telegram_webhook(request: Request):
     try:
         if not telegram_app:
             return {"ok": False, "error": "Bot not initialized"}
-        
+
         update_data = await request.json()
-        
+
         # Processar update do Telegram
         from telegram import Update
+
         # Usar o bot do telegram_app
         update = Update.de_json(update_data, telegram_app.bot)
         await telegram_app.process_update(update)
-        
+
         return {"ok": True}
     except Exception as e:
         logger.error(f"[TELEGRAM WEBHOOK] Erro: {e}")
         return {"ok": False, "error": str(e)}
 
+
 # ==================== IMPORTAÇÃO CSV ====================
+
 
 @app.post("/api/import/csv", dependencies=[Depends(verify_admin_token)])
 async def import_csv(
     file: UploadFile = File(...),
     store: str = "shopee",
     send_to_telegram: bool = Form(False),
-    background_tasks: BackgroundTasks = BackgroundTasks()
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     from .handlers.csv_import import process_csv_upload
-    
-    if not file.filename.endswith('.csv'):
+
+    if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Apenas CSV permitido")
-    
+
     content = await file.read()
     import io
+
     file_obj = io.BytesIO(content)
-    
-    background_tasks.add_task(process_csv_upload, file_obj, store, False, send_to_telegram)
-    
+
+    background_tasks.add_task(
+        process_csv_upload, file_obj, store, False, send_to_telegram
+    )
+
     return {"status": "processing", "message": "Importação iniciada em background"}
+
 
 # ==================== WEBHOOK & AUTOMAÇÃO TELEGRAM ====================
 
@@ -264,19 +303,20 @@ from .handlers.mercadolivre_api import router as mercadolivre_router
 from .handlers.telegram_settings import router as telegram_settings_router
 from .handlers.affiliate_api import router as affiliate_router
 
+
 # Mercado Livre OAuth Callback (temporário para obter tokens)
 @app.get("/api/ml/callback")
 async def ml_oauth_callback(code: str = Query(...)):
     """Callback OAuth do Mercado Livre - Obter Access Token"""
     import httpx
-    
+
     ML_APP_ID = os.getenv("ML_APP_ID")
     ML_SECRET_KEY = os.getenv("ML_SECRET_KEY")
     REDIRECT_URI = "https://afiliadobot.top/api/ml/callback"
-    
+
     if not ML_APP_ID or not ML_SECRET_KEY:
         return {"error": "ML_APP_ID e ML_SECRET_KEY não configurados no .env"}
-    
+
     # Trocar CODE por ACCESS_TOKEN
     url = "https://api.mercadolibre.com/oauth/token"
     payload = {
@@ -284,26 +324,27 @@ async def ml_oauth_callback(code: str = Query(...)):
         "client_id": ML_APP_ID,
         "client_secret": ML_SECRET_KEY,
         "redirect_uri": REDIRECT_URI,
-        "code": code
+        "code": code,
     }
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload, timeout=30.0)
             response.raise_for_status()
             data = response.json()
-        
+
         return {
             "success": True,
             "access_token": data.get("access_token"),
             "refresh_token": data.get("refresh_token"),
             "expires_in": data.get("expires_in"),
             "token_type": data.get("token_type"),
-            "instructions": "Copie o access_token e refresh_token e adicione ao .env como ML_ACCESS_TOKEN e ML_REFRESH_TOKEN"
+            "instructions": "Copie o access_token e refresh_token e adicione ao .env como ML_ACCESS_TOKEN e ML_REFRESH_TOKEN",
         }
     except Exception as e:
         logger.error(f"ML OAuth error: {e}")
         return {"error": str(e), "success": False}
+
 
 # Registrar routers
 app.include_router(health_router)  # Health check (no prefix - root level)
@@ -316,8 +357,10 @@ app.include_router(affiliate_router, prefix="/api")  # Affiliate bot-tools endpo
 
 # Feed Router
 from .handlers.feed_api import router as feed_router
+
 if feed_router:
     app.include_router(feed_router, prefix="/api")
+
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
@@ -332,29 +375,36 @@ async def telegram_webhook(request: Request):
         logger.error(f"Webhook error: {e}")
         return {"status": "error", "detail": str(e)}
 
+
 @app.post("/api/telegram/send", dependencies=[Depends(verify_cron_token)])
 async def send_cron_message(payload: TelegramMessage):
     """Endpoint chamado pelo GitHub Actions para enviar promoções"""
     from .handlers.telegram import TelegramBot
-    
+
     try:
         # Helper para operações do Telegram
-        tg_helper = TelegramBot() # Pega token do banco automaticamente se não passado
-        
+        tg_helper = TelegramBot()  # Pega token do banco automaticamente se não passado
+
         # Se o payload vier com product_id, busca o produto
         if payload.product_id:
             supabase = get_supabase_manager()
-            res = supabase.client.table("products").select("*").eq("id", payload.product_id).single().execute()
+            res = (
+                supabase.client.table("products")
+                .select("*")
+                .eq("id", payload.product_id)
+                .single()
+                .execute()
+            )
             if not res.data:
                 return {"status": "skipped", "reason": "product_not_found"}
-            
+
             # Passa a app global se existir, senão o helper se vira
             tg_helper.application = telegram_app
-            
+
             success = await tg_helper.send_product_to_channel(payload.chat_id, res.data)
             status = "sent" if success else "failed"
             return {"status": status, "product": res.data["name"]}
-            
+
         # Caso contrário, envia mensagem de texto pura
         elif payload.message:
             # Inicializa app/bot se precisar (para ter acesso ao bot.send_message)
@@ -364,30 +414,36 @@ async def send_cron_message(payload: TelegramMessage):
                 # Tenta inicializar sob demanda
                 app_instance = await tg_helper.initialize()
                 if not app_instance:
-                     return {"status": "skipped", "reason": "bot_not_configured"}
+                    return {"status": "skipped", "reason": "bot_not_configured"}
                 bot_instance = app_instance.bot
 
-            await bot_instance.send_message(chat_id=payload.chat_id, text=payload.message)
+            await bot_instance.send_message(
+                chat_id=payload.chat_id, text=payload.message
+            )
             return {"status": "sent", "type": "text"}
-            
+
     except Exception as e:
         logger.error(f"Send error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # ==================== ANALYTICS & COMISSÃO ====================
+
 
 @app.get("/api/stats")
 async def stats_endpoint():
     from .handlers.analytics import get_system_statistics
-    return await get_system_statistics()
 
+    return await get_system_statistics()
 
 
 @app.get("/api/stats/dashboard")
 async def stats_dashboard_endpoint():
     """Alias for /api/stats - used by frontend dashboard"""
     from .handlers.analytics import get_system_statistics
+
     return await get_system_statistics()
+
 
 @app.post("/api/commission/calculate", dependencies=[Depends(verify_admin_token)])
 async def commission_calc(data: dict):
@@ -395,6 +451,7 @@ async def commission_calc(data: dict):
     return await commission_system.calculate_commission(
         data.get("product_id"), data.get("sale_amount")
     )
+
 
 # ==================== EXECUÇÃO LOCAL ====================
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ Implements the 3 core affiliate-bot-tools skill capabilities:
   2. skill_detect_fake_discount     → detect_fake_discount()
   3. skill_scrape_product           → scrape_product_data()
 """
+
 from __future__ import annotations
 
 import logging
@@ -98,14 +99,16 @@ class AffiliateService:
         flat_params = {k: v[0] for k, v in existing_params.items()}
         new_query = urlencode(flat_params)
 
-        monetized_url = urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            new_query,
-            parsed.fragment,
-        ))
+        monetized_url = urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                new_query,
+                parsed.fragment,
+            )
+        )
 
         internal_url = f"{INTERNAL_REDIRECT_BASE}/{offer_id}"
 
@@ -214,7 +217,9 @@ class AffiliateService:
                 ),
                 "Accept-Language": "pt-BR,pt;q=0.9",
             }
-            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=timeout
+            ) as client:
                 response = await client.get(url, headers=headers)
                 result["status"] = "fetched"
                 result["http_status"] = response.status_code

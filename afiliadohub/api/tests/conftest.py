@@ -2,12 +2,13 @@
 Pytest configuration and fixtures
 ITIL Activity: Plan & Improve (Testing Infrastructure)
 """
+
 import pytest
 import sys
 import os
 
 # Add project root to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from unittest.mock import Mock, MagicMock
 from afiliadohub.api.repositories.product_repository import ProductRepository
@@ -18,11 +19,11 @@ from afiliadohub.api.services.product_service import ProductService
 def mock_supabase_client():
     """Mock Supabase client for testing"""
     client = Mock()
-    
+
     # Mock table()
     table_mock = Mock()
     client.table.return_value = table_mock
-    
+
     # Mock query chain
     table_mock.select.return_value = table_mock
     table_mock.eq.return_value = table_mock
@@ -33,12 +34,12 @@ def mock_supabase_client():
     table_mock.insert.return_value = table_mock
     table_mock.update.return_value = table_mock
     table_mock.delete.return_value = table_mock
-    
+
     # Mock execute()
     execute_mock = Mock()
     execute_mock.data = []
     table_mock.execute.return_value = execute_mock
-    
+
     return client
 
 
@@ -69,7 +70,7 @@ def sample_product():
         "coupon_code": "TEST10",
         "tags": ["tech", "sale"],
         "active": True,
-        "commission_rate": 8.5
+        "commission_rate": 8.5,
     }
 
 
@@ -83,7 +84,7 @@ def sample_products_list():
             "store": "shopee",
             "current_price": 50.00,
             "commission_rate": 10.0,
-            "active": True
+            "active": True,
         },
         {
             "id": 2,
@@ -91,8 +92,8 @@ def sample_products_list():
             "store": "shopee",
             "current_price": 100.00,
             "commission_rate": 15.0,
-            "active": True
-        }
+            "active": True,
+        },
     ]
 
 
@@ -100,17 +101,22 @@ def sample_products_list():
 # Affiliate Bot Tools fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def affiliate_service():
     """AffiliateService instance (stateless — no deps needed)"""
     from afiliadohub.api.services.affiliate_service import AffiliateService
+
     return AffiliateService()
 
 
 @pytest.fixture
 def price_history_repository(mock_supabase_client):
     """PriceHistoryRepository with mocked Supabase client"""
-    from afiliadohub.api.repositories.price_history_repository import PriceHistoryRepository
+    from afiliadohub.api.repositories.price_history_repository import (
+        PriceHistoryRepository,
+    )
+
     return PriceHistoryRepository(mock_supabase_client)
 
 
@@ -118,6 +124,7 @@ def price_history_repository(mock_supabase_client):
 def sample_price_history():
     """Sample price history row for testing"""
     from datetime import datetime, timezone
+
     return {
         "id": 1,
         "product_id": 1,

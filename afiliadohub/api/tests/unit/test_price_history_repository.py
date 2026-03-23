@@ -4,6 +4,7 @@ ITIL Activity: Plan & Improve (Quality Assurance)
 
 Covers: table_name, save_price, get_price_history, get_historical_average, get_min_price
 """
+
 import pytest
 from afiliadohub.api.repositories.price_history_repository import PriceHistoryRepository
 
@@ -83,7 +84,9 @@ class TestPriceHistoryRepository:
         mock_supabase_client,
     ):
         """get_price_history returns empty list when no records exist"""
-        mock_supabase_client.table().select().eq().order().limit().execute.return_value.data = []
+        mock_supabase_client.table().select().eq().order().limit().execute.return_value.data = (
+            []
+        )
         result = price_history_repository.get_price_history(product_id=999)
         assert result == []
 
@@ -149,6 +152,8 @@ class TestPriceHistoryRepository:
         mock_supabase_client,
     ):
         """get_min_price returns None when no history exists"""
-        mock_supabase_client.table().select().eq().order().limit().execute.return_value.data = []
+        mock_supabase_client.table().select().eq().order().limit().execute.return_value.data = (
+            []
+        )
         result = price_history_repository.get_min_price(product_id=99)
         assert result is None

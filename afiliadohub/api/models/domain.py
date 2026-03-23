@@ -2,6 +2,7 @@
 Domain Models - Pydantic models for business entities
 ITIL Activity: Design (Domain Definition)
 """
+
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List
 from datetime import datetime
@@ -9,6 +10,7 @@ from datetime import datetime
 
 class Product(BaseModel):
     """Product domain model"""
+
     id: Optional[int] = None
     name: str = Field(..., min_length=3, max_length=500)
     store: str = Field(..., description="Store name (shopee, mercadolivre, etc)")
@@ -23,7 +25,7 @@ class Product(BaseModel):
     commission_rate: Optional[float] = Field(None, ge=0, le=100)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -33,49 +35,47 @@ class Product(BaseModel):
                 "current_price": 1299.90,
                 "original_price": 1599.90,
                 "category": "electronics",
-                "commission_rate": 8.5
+                "commission_rate": 8.5,
             }
         }
 
 
 class Store(BaseModel):
     """Store domain model"""
+
     id: Optional[int] = None
     name: str = Field(..., description="Store identifier (shopee, mercadolivre)")
     display_name: str = Field(..., description="Display name")
     api_enabled: bool = Field(default=False)
     commission_default: float = Field(default=0.0, ge=0, le=100)
     created_at: Optional[datetime] = None
-    
+
     class Config:
         json_schema_extra = {
             "example": {
                 "name": "shopee",
                 "display_name": "Shopee",
                 "api_enabled": True,
-                "commission_default": 8.0
+                "commission_default": 8.0,
             }
         }
 
 
 class User(BaseModel):
     """User domain model (simplified)"""
+
     id: Optional[str] = None  # UUID from Supabase Auth
     email: Optional[str] = None
     role: str = Field(default="user", description="User role (admin, user)")
     created_at: Optional[datetime] = None
-    
+
     class Config:
-        json_schema_extra = {
-            "example": {
-                "email": "user@example.com",
-                "role": "user"
-            }
-        }
+        json_schema_extra = {"example": {"email": "user@example.com", "role": "user"}}
 
 
 class ProductCreate(BaseModel):
     """Model for creating products"""
+
     name: str = Field(..., min_length=3, max_length=500)
     store: str
     affiliate_link: str = Field(..., min_length=10)
@@ -89,6 +89,7 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     """Model for updating products"""
+
     name: Optional[str] = Field(None, min_length=3, max_length=500)
     current_price: Optional[float] = Field(None, gt=0)
     original_price: Optional[float] = None
@@ -102,6 +103,7 @@ class ProductUpdate(BaseModel):
 
 class ProductFilter(BaseModel):
     """Model for filtering products"""
+
     store: Optional[str] = None
     category: Optional[str] = None
     min_price: Optional[float] = Field(None, gt=0)
@@ -113,6 +115,7 @@ class ProductFilter(BaseModel):
 
 class PriceHistory(BaseModel):
     """Price history entry for a product — used for fake-discount detection"""
+
     id: Optional[int] = None
     product_id: int = Field(..., description="FK to products.id")
     price: float = Field(..., gt=0, description="Scraped price in BRL")
@@ -126,24 +129,38 @@ class PriceHistory(BaseModel):
                 "product_id": 42,
                 "price": 1299.90,
                 "cep": "01310100",
-                "source": "scraper"
+                "source": "scraper",
             }
         }
 
 
 class AffiliateLinkResult(BaseModel):
     """Result of affiliate link generation"""
-    monetized_product_url: str = Field(..., description="Product URL with affiliate tag injected")
-    internal_click_url: str = Field(..., description="Internal redirect: afiliado.top/go/{offer_id}")
+
+    monetized_product_url: str = Field(
+        ..., description="Product URL with affiliate tag injected"
+    )
+    internal_click_url: str = Field(
+        ..., description="Internal redirect: afiliado.top/go/{offer_id}"
+    )
     store_name: str
     offer_id: str
 
 
 class DiscountAnalysis(BaseModel):
     """Result of fake-discount detection (skill_detect_fake_discount)"""
-    is_fake_discount: bool = Field(..., description="True if declared price was inflated")
-    declared_from_price: float = Field(..., description="Original price as shown by the store")
-    adjusted_from_price: float = Field(..., description="Price corrected by historical average")
+
+    is_fake_discount: bool = Field(
+        ..., description="True if declared price was inflated"
+    )
+    declared_from_price: float = Field(
+        ..., description="Original price as shown by the store"
+    )
+    adjusted_from_price: float = Field(
+        ..., description="Price corrected by historical average"
+    )
     current_price: float
-    real_discount_percentage: float = Field(..., description="Actual discount % vs adjusted price")
+    real_discount_percentage: float = Field(
+        ..., description="Actual discount % vs adjusted price"
+    )
     historical_average_price: float

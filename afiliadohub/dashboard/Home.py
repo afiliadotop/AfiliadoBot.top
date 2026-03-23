@@ -5,8 +5,8 @@ import os
 # --- BLOCO DE CONFIGURAÇÃO DE PATH (CRÍTICO) ---
 # Isso garante que o Python encontre a pasta 'dashboard' e a raiz,
 # não importa de onde você rode o comando.
-current_dir = os.path.dirname(os.path.abspath(__file__)) # Pasta dashboard
-root_dir = os.path.dirname(current_dir) # Pasta afiliadohub (raiz)
+current_dir = os.path.dirname(os.path.abspath(__file__))  # Pasta dashboard
+root_dir = os.path.dirname(current_dir)  # Pasta afiliadohub (raiz)
 
 if root_dir not in sys.path:
     sys.path.append(root_dir)
@@ -26,11 +26,8 @@ except ImportError:
     from components.sidebar import show_sidebar
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="AfiliadoHub - Painel",
-    page_icon="🚀",
-    layout="wide"
-)
+st.set_page_config(page_title="AfiliadoHub - Painel", page_icon="🚀", layout="wide")
+
 
 def main():
     show_sidebar()
@@ -40,7 +37,9 @@ def main():
 
     supabase = get_supabase_client()
     if not supabase:
-        st.error("❌ Erro: Segredos não configurados. Verifique .streamlit/secrets.toml")
+        st.error(
+            "❌ Erro: Segredos não configurados. Verifique .streamlit/secrets.toml"
+        )
         st.stop()
 
     # Métricas Rápidas
@@ -49,7 +48,12 @@ def main():
     with col1:
         try:
             # Tenta contar produtos ativos
-            response = supabase.table("products").select("id", count="exact").eq("is_active", True).execute()
+            response = (
+                supabase.table("products")
+                .select("id", count="exact")
+                .eq("is_active", True)
+                .execute()
+            )
             count = response.count if response.count is not None else 0
             st.metric("📦 Produtos Ativos", count)
         except Exception as e:
@@ -57,6 +61,7 @@ def main():
             st.warning(f"Erro de conexão: {e}")
 
     st.info("👋 Bem-vindo ao AfiliadoHub! Use o menu lateral para navegar.")
+
 
 if __name__ == "__main__":
     main()
