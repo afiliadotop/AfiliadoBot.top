@@ -1,7 +1,16 @@
 import { toast } from 'sonner';
 import * as Sentry from "@sentry/react";
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const getBaseUrl = (): string => {
+    const url = import.meta.env.VITE_API_URL || '/api';
+    // Se a URL for absoluta (contém http) e não termina com /api, adiciona
+    if (url.startsWith('http') && !url.endsWith('/api') && !url.includes('/api/')) {
+        return url.endsWith('/') ? `${url}api` : `${url}/api`;
+    }
+    return url;
+};
+
+const BASE_URL = getBaseUrl();
 
 // Error logging service
 const logError = (error: Error, context?: string) => {
@@ -34,6 +43,13 @@ export const api = {
             });
 
             if (!res.ok) {
+                if (res.status === 401) {
+                    toast.error('Sessão expirada. Faça login novamente.');
+                    localStorage.removeItem('afiliadobot_token');
+                    localStorage.removeItem('afiliadobot_user');
+                    window.location.href = '/login';
+                    return null;
+                }
                 // Try to get error message from response
                 try {
                     const errorData = await res.json();
@@ -101,9 +117,6 @@ export const api = {
             });
 
             if (!res.ok) {
-                const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
-                logError(error, `PUT ${endpoint}`);
-
                 if (res.status === 401) {
                     toast.error('Sessão expirada. Faça login novamente.');
                     localStorage.removeItem('afiliadobot_token');
@@ -111,6 +124,8 @@ export const api = {
                     window.location.href = '/login';
                     return null;
                 }
+                const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
+                logError(error, `PUT ${endpoint}`);
 
                 // Try to get error message from response
                 try {
@@ -120,6 +135,7 @@ export const api = {
                 } catch {
                     toast.error(`Erro ao atualizar: ${res.statusText}`);
                 }
+                return null;
             }
 
             return await res.json();
@@ -138,9 +154,6 @@ export const api = {
             });
 
             if (!res.ok) {
-                const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
-                logError(error, `DELETE ${endpoint}`);
-
                 if (res.status === 401) {
                     toast.error('Sessão expirada. Faça login novamente.');
                     localStorage.removeItem('afiliadobot_token');
@@ -148,6 +161,8 @@ export const api = {
                     window.location.href = '/login';
                     return null;
                 }
+                const error = new Error(`HTTP ${res.status}: ${res.statusText}`);
+                logError(error, `DELETE ${endpoint}`);
 
                 // Try to get error message from response
                 try {

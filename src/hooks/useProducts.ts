@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 
 export interface Product {
-    id: number;
+    id: string | number;
     name: string;
     store: string;
     affiliate_link: string;
@@ -32,12 +33,12 @@ export interface ProductFilters {
     is_active?: boolean;
 }
 
-export const useProducts = () => {
+export const useProducts = (initialFilters: ProductFilters = {}) => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filters, setFilters] = useState<ProductFilters>({});
+    const [filters, setFilters] = useState<ProductFilters>(initialFilters);
 
-    const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -46,15 +47,12 @@ export const useProducts = () => {
             if (filters.search) params.append('search', filters.search);
             if (filters.is_active !== undefined) params.append('is_active', String(filters.is_active));
 
-            const response = await api.get<{ data: Product[], count: number }>(`/products?${params.toString()}`);
+            const response = await api.get<any>(`/products?${params.toString()}`);
 
             if (response) {
-                // Handle both legacy (Array) and new (Object with data) formats
-                if (Array.isArray(response)) {
-                    setProducts(response);
-                } else if (response.data) {
-                    setProducts(response.data);
-                }
+                // Support both Direct Array (legacy) and Object response (modern)
+                const data = Array.isArray(response) ? response : (response.data || []);
+                setProducts(data);
             }
         } catch (error) {
             console.error('Failed to fetch products:', error);
@@ -62,14 +60,14 @@ export const useProducts = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [filters]);
 
     const createProduct = async (productData: Partial<Product>) => {
         try {
             const response = await api.post<Product>('/products', productData);
             if (response) {
                 toast.success('Produto criado com sucesso!');
-                fetchProducts(); // Reload list
+                fetchProducts();
                 return response;
             }
         } catch (error) {
@@ -79,12 +77,12 @@ export const useProducts = () => {
         }
     };
 
-    const updateProduct = async (id: number, productData: Partial<Product>) => {
+    const updateProduct = async (id: string | number, productData: Partial<Product>) => {
         try {
             const response = await api.put<Product>(`/products/${id}`, productData);
             if (response) {
                 toast.success('Produto atualizado!');
-                fetchProducts(); // Reload list
+                fetchProducts();
                 return response;
             }
         } catch (error) {
@@ -94,12 +92,12 @@ export const useProducts = () => {
         }
     };
 
-    const deleteProduct = async (id: number) => {
+    const deleteProduct = async (id: string | number) => {
         try {
             const response = await api.delete<{ message: string }>(`/products/${id}`);
             if (response) {
                 toast.success('Produto deletado!');
-                fetchProducts(); // Reload list
+                fetchProducts();
                 return true;
             }
         } catch (error) {
@@ -111,7 +109,20 @@ export const useProducts = () => {
 
     useEffect(() => {
         fetchProducts();
-    }, [filters]);
+
+        const channel = supabase
+            .channel('public:products')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'products' },
+                () => fetchProducts()
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [fetchProducts]);
 
     return {
         products,

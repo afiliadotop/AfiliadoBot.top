@@ -32,6 +32,11 @@ const ShopeeAdmin = lazy(() => import('./pages/ShopeeAdmin').then(m => ({ defaul
 const ShopeeFavorites = lazy(() => import('./pages/ShopeeFavorites').then(m => ({ default: m.ShopeeFavorites })));
 const ShopeeFeeds = lazy(() => import('./pages/ShopeeFeeds').then(m => ({ default: m.ShopeeFeeds })));
 
+// Awin pages
+const AwinProducts = lazy(() => import('./pages/AwinProducts'));
+const CJProducts = lazy(() => import('./pages/CJProducts'));
+const VouchersCentral = lazy(() => import('./pages/VouchersCentral').then(m => ({ default: m.VouchersCentral })));
+
 // Settings pages
 const TelegramSettings = lazy(() => import('./pages/TelegramSettings'));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
@@ -62,6 +67,7 @@ function App() {
                         <Suspense fallback={<PageLoader />}>
                             <Routes>
                                 <Route path="/" element={<LandingPage />} />
+                                <Route path="/cupons" element={<VouchersCentral />} />
                                 <Route path="/login" element={<Login />} />
                                 <Route path="/register" element={<Register />} />
                                 <Route path="/pricing" element={<Pricing />} />
@@ -83,6 +89,8 @@ function App() {
                                         <Route path="settings" element={<Placeholder title="Configurações" />} />
                                         <Route path="shopee" element={<ShopeeAdmin />} />
                                         <Route path="shopee/feeds" element={<ShopeeFeeds />} />
+                                        <Route path="awin" element={<AwinProducts />} />
+                                        <Route path="cj" element={<CJProducts />} />
                                         <Route path="analytics" element={<Analytics />} />
                                         <Route path="profile" element={<Profile />} />
                                     </Route>

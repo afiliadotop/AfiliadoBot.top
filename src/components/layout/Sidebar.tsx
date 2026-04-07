@@ -1,4 +1,4 @@
-import { LayoutDashboard, Link as LinkIcon, Upload, Send, Zap, Settings, LogOut, Bot, Database } from "lucide-react";
+import { LayoutDashboard, Link as LinkIcon, Upload, Send, Zap, Settings, LogOut, Bot, Database, ShoppingBag, TrendingUp } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -65,6 +65,18 @@ export const Sidebar = () => {
                     label="Status Feeds"
                     active={location.pathname.includes('shopee/feeds')}
                     onClick={() => navigate('/dashboard/shopee/feeds')}
+                />
+                <SidebarItem
+                    icon={<ShoppingBag size={20} className="text-orange-400" />}
+                    label="Awin"
+                    active={activeTab === 'awin'}
+                    onClick={() => navigate('/dashboard/awin')}
+                />
+                <SidebarItem
+                    icon={<TrendingUp size={20} className="text-emerald-500" />}
+                    label="CJ Affiliate"
+                    active={activeTab === 'cj'}
+                    onClick={() => navigate('/dashboard/cj')}
                 />
                 <SidebarItem
                     icon={<Settings size={20} />}

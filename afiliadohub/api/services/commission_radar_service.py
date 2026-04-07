@@ -8,7 +8,6 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from ..utils.cj_client import CJAffiliateClient, CJAPIError
 from ..utils.awin_client import AwinAffiliateClient, AwinAPIError
-from ..handlers.telegram import TelegramBot
 from ..utils.telegram_settings_manager import telegram_settings
 
 logger = logging.getLogger(__name__)
@@ -17,7 +16,13 @@ class CommissionRadarService:
     def __init__(self):
         self._cj_client: Optional[CJAffiliateClient] = None
         self._awin_client: Optional[AwinAffiliateClient] = None
-        self._tg_bot = TelegramBot()
+        self._tg_bot = None
+
+    def _get_tg_bot(self) -> Any:
+        if not self._tg_bot:
+            from ..handlers.telegram import TelegramBot
+            self._tg_bot = TelegramBot()
+        return self._tg_bot
 
     def _get_cj_client(self) -> CJAffiliateClient:
         if not self._cj_client:
@@ -65,9 +70,10 @@ class CommissionRadarService:
             
             dispatched_count = 0
             if auto_dispatch and chat_id:
+                tg_bot = self._get_tg_bot()
                 for deal in to_dispatch:
                     product_dict = self._map_cj_to_product(deal)
-                    if await self._tg_bot.send_product_to_channel(chat_id, product_dict):
+                    if await tg_bot.send_product_to_channel(chat_id, product_dict):
                         dispatched_count += 1
             
             return {
@@ -126,9 +132,10 @@ class CommissionRadarService:
             dispatched_count = 0
             
             if auto_dispatch and chat_id:
+                tg_bot = self._get_tg_bot()
                 for offer in to_dispatch:
                     product_dict = self._map_awin_to_product(offer)
-                    if await self._tg_bot.send_product_to_channel(chat_id, product_dict):
+                    if await tg_bot.send_product_to_channel(chat_id, product_dict):
                         dispatched_count += 1
                         
             return {

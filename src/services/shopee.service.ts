@@ -12,6 +12,8 @@ export interface ShopeeProduct {
     rating?: string;
     discountRate: number;
     shopName: string;
+    shopId: number;
+    shopType?: number;
     offerLink: string;
 
     // Admin only - undefined for regular users
@@ -19,6 +21,18 @@ export interface ShopeeProduct {
     commissionAmount?: string;
     sellerCommissionRate?: string;
     shopeeCommissionRate?: string;
+}
+
+export interface ExtendedProductDetails {
+    itemId: number;
+    shopId: number;
+    videoUrl: string | null;
+    reviews: {
+        author: string;
+        comment: string;
+        rating: number;
+    }[];
+    details?: any;
 }
 
 export interface ShopeeStats {
@@ -237,7 +251,14 @@ export const shopeeService = {
     /**
      * Envia um produto para o Telegram
      */
-    sendProductToTelegram: async (itemId: number, productData: ShopeeProduct): Promise<{ success: boolean; message: string; product_name?: string } | null> => {
+    sendProductToTelegram: async (itemId: number, productData: any): Promise<{ success: boolean; message: string; product_name?: string } | null> => {
         return await api.post(`/shopee/products/${itemId}/send-to-telegram`, productData);
+    },
+
+    /**
+     * Busca detalhes estendidos (Vídeo e Reviews)
+     */
+    getExtendedDetails: async (itemId: number, shopId: number): Promise<ExtendedProductDetails | null> => {
+        return await api.get<ExtendedProductDetails>(`/shopee/products/${itemId}/${shopId}/extended`);
     }
 };

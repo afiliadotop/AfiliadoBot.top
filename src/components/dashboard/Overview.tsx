@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link as LinkIcon, Globe, Tag, Send, Activity, Zap, PieChart, ShoppingBag, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../../services/api";
+import { supabase } from "../../lib/supabase";
 import { DashboardStats } from "../../types";
 import { Skeleton } from "../ui/Skeleton";
 import { PageTransition } from "../layout/PageTransition";
@@ -10,26 +11,50 @@ export const Overview = () => {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchStats = async () => {
-            // Simulate slight delay for skeleton demo
-            await new Promise(r => setTimeout(r, 800));
+    const fetchStats = async () => {
+        const data = await api.get<DashboardStats>('/stats/dashboard');
+        if (data) {
+            setStats(data);
+        } else {
+            // Fallback for demo/dev
+            setStats({
+                total_products: 1500,
+                active_products: 1245,
+                connected_stores: 7,
+                active_coupons: 84,
+                telegram_sends: 4230
+            });
+        }
+        setLoading(false);
+    };
 
-            const data = await api.get<DashboardStats>('/stats/dashboard');
-            if (data) {
-                setStats(data);
-            } else {
-                setStats({
-                    total_products: 1500,
-                    active_products: 1245,
-                    connected_stores: 7,
-                    active_coupons: 84,
-                    telegram_sends: 4230
-                });
-            }
-            setLoading(false);
-        };
+    useEffect(() => {
         fetchStats();
+
+        // REAL-TIME: Listen for any changes in products or stats
+        const channel = supabase
+            .channel('dashboard-auto-sync')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'products' },
+                () => {
+                    console.log('Real-time: Mudança detectada em produtos, atualizando stats...');
+                    fetchStats();
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'product_stats' },
+                () => {
+                    console.log('Real-time: Mudança detectada em estatísticas, atualizando stats...');
+                    fetchStats();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     return (
@@ -117,7 +142,7 @@ export const Overview = () => {
                         {loading ? (
                             <div className="h-64 flex items-end justify-between gap-2 px-2">
                                 {[...Array(12)].map((_, i) => (
-                                    <Skeleton key={i} className="w-full rounded-t-sm" style={{ height: `${Math.random() * 60 + 20}%` }} />
+                                    <div key={i} className="w-full bg-slate-200 dark:bg-slate-800 rounded-t-sm" style={{ height: `${Math.random() * 60 + 20}%` }} />
                                 ))}
                             </div>
                         ) : (

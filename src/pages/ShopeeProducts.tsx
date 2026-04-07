@@ -188,9 +188,9 @@ export const ShopeeProducts = () => {
 
                     {/* Results Count */}
                     {!loading && products.length > 0 && pagination && (
-                        <div className="text-sm text-slate-400">
-                            Exibindo {products.length} de {pagination.total} produtos
-                            {keyword && ` para "${keyword}"`}
+                        <div className="text-sm font-mono text-slate-500 uppercase tracking-widest border-l-2 border-orange-500 pl-3">
+                            {products.length} carregados {pagination.total > 0 ? `• [Total: ${pagination.total}]` : ''}
+                            {keyword && ` • BUSCA: "${keyword}"`}
                         </div>
                     )}
 
@@ -203,11 +203,11 @@ export const ShopeeProducts = () => {
 
                     {/* Error State */}
                     {error && (
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 flex items-center gap-4">
-                            <AlertCircle className="w-6 h-6 text-red-400" />
+                        <div className="bg-red-500/10 border-l-4 border-red-500 p-6 flex items-center gap-4 rounded-sm">
+                            <AlertCircle className="w-6 h-6 text-red-500" />
                             <div>
-                                <h3 className="font-semibold text-red-400">Erro</h3>
-                                <p className="text-sm text-red-300">{error}</p>
+                                <h3 className="font-bold text-red-500 uppercase tracking-widest text-sm">Falha no Sistema</h3>
+                                <p className="text-sm text-red-400 font-mono mt-1">{error}</p>
                             </div>
                         </div>
                     )}
@@ -215,7 +215,7 @@ export const ShopeeProducts = () => {
                     {/* Products Grid */}
                     {!loading && !error && products.length > 0 && (
                         <>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {products.map((product) => (
                                     <ShopeeProductCard
                                         key={product.itemId}
@@ -225,27 +225,24 @@ export const ShopeeProducts = () => {
                                 ))}
                             </div>
 
-                            {/* Load More Button */}
+                            {/* Load More Button Brutalist */}
                             {pagination?.hasMore && (
-                                <div className="flex justify-center pt-8">
+                                <div className="flex justify-center pt-10 pb-4">
                                     <button
                                         onClick={handleLoadMore}
                                         disabled={loadingMore}
-                                        className="px-8 py-3 bg-gradient-to-r from-orange-500 to-orange-600 
-                                            hover:from-orange-600 hover:to-orange-700 rounded-lg font-semibold
-                                            transition-all shadow-lg hover:shadow-xl disabled:opacity-50 
-                                            disabled:cursor-not-allowed flex items-center gap-2"
+                                        className="group relative px-8 py-3 bg-slate-950 border-2 border-orange-500 text-orange-400 font-bold uppercase tracking-widest hover:bg-orange-500 hover:text-slate-900 rounded-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
                                     >
                                         {loadingMore ? (
                                             <>
                                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                                Carregando...
+                                                Acessando Servidor...
                                             </>
                                         ) : (
                                             <>
                                                 Carregar Mais
-                                                <span className="text-sm opacity-75">
-                                                    ({pagination.total - products.length} restantes)
+                                                <span className="text-xs bg-orange-500/20 group-hover:bg-slate-900/20 px-2 py-0.5 rounded-sm">
+                                                    {(pagination.total - products.length) > 0 ? `${pagination.total - products.length} RESTANTES` : 'MAIS'}
                                                 </span>
                                             </>
                                         )}
