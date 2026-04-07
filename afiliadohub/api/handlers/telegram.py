@@ -17,6 +17,8 @@ from telegram.ext import (
 from ..utils.supabase_client import get_supabase_manager
 from ..utils.link_processor import normalize_link, detect_store
 from ..utils.telegram_settings_manager import telegram_settings
+from ..utils.awin_client import AwinAffiliateClient, AwinAPIError
+from ..services.commission_radar_service import CommissionRadarService
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +64,19 @@ class TelegramBot:
             # Registra handlers
             self._register_handlers()
 
-            # Inicia polling (para desenvolvimento)
-            # await self.application.initialize()
-            # await self.application.start()
-            # await self.application.updater.start_polling()
+            # Configura menu de comandos (SEO)
+            await self.set_bot_commands()
+
+            # Inicia polling locamente se não estiver configurado para webhook
+            render_url = os.getenv("RENDER_EXTERNAL_URL")
+            if not render_url:
+                logger.info("[TELEGRAM] Iniciando polling para recepção de comandos locais...")
+                await self.application.initialize()
+                await self.application.start()
+                if self.application.updater:
+                    await self.application.updater.start_polling()
+                else:
+                    logger.warning("[TELEGRAM] Sem updater disponível na application.")
 
             logger.info("[OK] Bot Telegram inicializado")
             return self.application
@@ -134,10 +145,12 @@ class TelegramBot:
             CommandHandler("magalu", lambda u, c: self.store_command(u, c, "magalu"))
         )
         self.application.add_handler(
-            CommandHandler(
-                "mercado", lambda u, c: self.store_command(u, c, "mercado_livre")
-            )
+            CommandHandler("mercado", lambda u, c: self.store_command(u, c, "mercado_livre"))
         )
+
+        # Comandos CJ e Awin Radar
+        self.application.add_handler(CommandHandler("awin_radar", self.awin_radar_command))
+        self.application.add_handler(CommandHandler("cj_radar", self.cj_radar_command))
 
         # Comandos de busca
         self.application.add_handler(CommandHandler("buscar", self.search_command))
@@ -149,6 +162,15 @@ class TelegramBot:
 
         # Comandos admin
         self.application.add_handler(CommandHandler("stats", self.stats_command))
+
+        # Handler para novos membros (Boas-vindas AIDA)
+        self.application.add_handler(
+            MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, self.welcome_new_members)
+        )
+        # Limpeza de saída de membros (opcional para manter o foco)
+        self.application.add_handler(
+            MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, self.delete_status_message)
+        )
 
         # Handler para mensagens
         self.application.add_handler(
@@ -168,85 +190,124 @@ class TelegramBot:
 
 🎯 *Comandos disponíveis:*
 
-🛒 *Por Loja:*
-/shopee - Melhores cupons da Shopee
-/aliexpress - Ofertas do AliExpress  
-/amazon - Promoções Amazon
-/temu - Novidades do Temu
-/shein - Descontos Shein
-/magalu - Ofertas Magazine Luiza
-/mercado - Mercado Livre
+🌟 <b>BEM-VINDO(A) AO AFILIADOHUB!</b>
 
-🔍 *Busca:*
-/cupom - Cupom aleatório
-/promo - Promoção do momento
-/buscar [produto] - Buscar produto
-/hoje - Novidades de hoje
-/aleatorio - Produto aleatório
-/categorias - Ver categorias
+Olá {update.effective_user.first_name}, que bom ter você aqui! 👋
 
-📊 *Info:*
-/stats - Estatísticas do bot
-/help - Ajuda
+Eu sou seu <b>Garimpeiro de Ofertas VIP</b>. Minha missão é monitorar as maiores lojas do Brasil (Shopee, Amazon, AliExpress...) 24h por dia para encontrar os <b>preços mais baixos e cupons escondidos</b>.
 
-💡 *Dica:* Use /buscar seguido do que procura!
-Ex: /buscar fone bluetooth
+🛍️ <b>O que eu faço por você?</b>
+- 🔍 Busco qualquer produto (digite /buscar [nome])
+- 🎟️ Entrego Cupons VIP (digite /cupom)
+- 🔥 Mostro a melhor oferta AGORA (digite /promo)
+
+👇 <b>Escolha uma opção abaixo para começar agora mesmo:</b>
         """
 
         keyboard = [
             [
-                InlineKeyboardButton("🛍️ Shopee", callback_data="store_shopee"),
-                InlineKeyboardButton("📦 AliExpress", callback_data="store_aliexpress"),
+                InlineKeyboardButton("🔥 Melhor Promoção", callback_data="today_promo"),
+                InlineKeyboardButton("🎟️ Pegar Cupom VIP", callback_data="random_coupon"),
             ],
             [
-                InlineKeyboardButton("📚 Amazon", callback_data="store_amazon"),
-                InlineKeyboardButton("🎯 Temu", callback_data="store_temu"),
+                InlineKeyboardButton("🛍️ Ver na Shopee", callback_data="store_shopee"),
+                InlineKeyboardButton("📦 Ver na Amazon", callback_data="store_amazon"),
             ],
             [
-                InlineKeyboardButton(
-                    "🎁 Cupom Aleatório", callback_data="random_coupon"
-                ),
-                InlineKeyboardButton("🔥 Promoção Hoje", callback_data="today_promo"),
+                InlineKeyboardButton("🔍 Como Buscar?", callback_data="help_search"),
+                InlineKeyboardButton("🏆 Top 5 Descontos", callback_data="top_deals"),
             ],
         ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            welcome_text, parse_mode="Markdown", reply_markup=reply_markup
+            welcome_text, parse_mode="HTML", reply_markup=reply_markup
         )
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /help"""
+        """Handler para /help centralizado"""
         help_text = """
-🆘 *Ajuda do AfiliadoHub*
+🆘 <b>AJUDA AFILIADOHUB</b>
 
-*Como usar:*
-1. Use /cupom para receber um cupom aleatório
-2. Use /shopee, /aliexpress, etc para ofertas específicas
-3. Use /buscar [produto] para buscar algo específico
-4. Use /hoje para ver as novidades do dia
+Aqui estão os principais comandos para você economizar muito:
 
-*Exemplos:*
-/cupom - Recebe um cupom aleatório
-/buscar smartphone - Busca smartphones
-/shopee - Cupons da Shopee
-/hoje - Novidades de hoje
+🔍 <b>BUSCAS</b>
+/buscar [nome] - Busca rápida de produtos
+/lojas - Ver todas as lojas parceiras
+/hoje - O que chegou de NOVO hoje
+/top - Os 5 maiores descontos agora
 
-*Admin:* Para adicionar produtos, use o painel web ou envie CSV.
+🎟️ <b>CUPONS</b>
+/cupom - Recebe um cupom aleatório VIP
+
+🔄 <b>DICA:</b> No grupo público, eu envio as melhores ofertas automaticamente. Mas se você busca algo específico, <b>sempre use o chat privado comigo!</b>
         """
-        await update.message.reply_text(help_text, parse_mode="Markdown")
+        await update.message.reply_text(help_text, parse_mode="HTML")
 
     async def cupom_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /cupom - Retorna um cupom aleatório"""
+        """Handler para /cupom - Traz cupom exclusivo Awin ou fallback local"""
         try:
+            # 1. Tentar pegar um Voucher VIP Atualizado da Awin
+            try:
+                awin_client = AwinAffiliateClient()
+                programs = await awin_client.get_programs(relationship="joined")
+                if programs:
+                    joined_ids = [str(p["id"]) for p in programs]
+                    # Limita top 15 para resposta rápida do bot
+                    offers_resp = await awin_client.get_offers(
+                        advertiser_ids=[int(id) for id in joined_ids[:15]], 
+                        promotion_types=["voucher"], 
+                        page_size=25
+                    )
+                    offers = offers_resp.get("data", []) if isinstance(offers_resp, dict) else []
+                    if isinstance(offers_resp, list): 
+                        offers = offers_resp
+                    
+                    # Filtra apenas quem tem CODE explícito
+                    filtered = [o for o in offers if str(o.get('advertiser', {}).get('id')) in joined_ids and o.get('code')]
+                    if filtered:
+                        voucher = random.choice(filtered)
+                        loja = voucher.get('advertiser', {}).get('name', 'Loja Parceira')
+                        promo = voucher.get('title', 'Desconto Especial')
+                        codigo = voucher.get('code')
+                        link = voucher.get('urlTracking') or voucher.get('deeplink') or 'https://afiliado.top'
+                        
+                        cupom_msg = f"🎟 *CUPOM VIP EXCLUSIVO: {loja}*\n\n"
+                        cupom_msg += f"✨ {promo}\n\n"
+                        cupom_msg += f"✂️ Salve e Copie o código abaixo:\n👉 `{codigo}` 👈\n\n"
+                        
+                        keyboard = [[InlineKeyboardButton(f"🛒 Ativar em {loja}", url=link)]]
+                        reply_markup = InlineKeyboardMarkup(keyboard)
+                        
+                        await update.message.reply_text(cupom_msg, parse_mode="Markdown", reply_markup=reply_markup)
+                        return
+            except Exception as e:
+                logger.warning(f"[Bot] Erro ao buscar cupom AWIN vivo: {e}. Servindo fallback...")
+
+            # 2. Tentar buscar da CJ via Radar Service
+            try:
+                radar = CommissionRadarService()
+                vouchers = await radar.fetch_vouchers()
+                if vouchers:
+                    # Filtra os que tem cupom_code (evita produtos genéricos da busca keywords)
+                    with_code = [v for v in vouchers if v.get("coupon_code")]
+                    if not with_code: 
+                        with_code = vouchers # fallback
+
+                    voucher = random.choice(with_code)
+                    message = self._format_product_message(voucher)
+                    await self._send_formatted_product_reply(update, voucher, message)
+                    return
+            except Exception as e:
+                logger.warning(f"[Bot] Erro ao buscar cupons CJ via Radar: {e}")
+
+            # 2. Fallback Base Genérica
             product = await self.supabase.get_random_product(min_discount=20)
 
             if product:
                 message = self._format_product_message(product)
-                await update.message.reply_text(
-                    message, parse_mode="HTML", disable_web_page_preview=False
-                )
+                await self._send_formatted_product_reply(update, product, message)
 
                 # Atualiza estatísticas
                 await self.supabase.increment_product_stats(
@@ -254,11 +315,11 @@ Ex: /buscar fone bluetooth
                 )
             else:
                 await update.message.reply_text(
-                    "😕 Nenhum cupom disponível no momento. Tente novamente mais tarde!"
+                    "😕 Nenhum cupom listado no momento. Tente novamente mais tarde!"
                 )
 
         except Exception as e:
-            logger.error(f"Erro no comando /cupom: {e}")
+            logger.error(f"Erro crítico no comando /cupom: {e}")
             await update.message.reply_text(
                 "❌ Ocorreu um erro ao buscar cupons. Tente novamente!"
             )
@@ -271,22 +332,21 @@ Ex: /buscar fone bluetooth
             # Busca 3 produtos da loja
             filters = {"store": store, "min_discount": 10, "limit": 3}
 
+            logger.info(f"[Bot] Buscando ofertas para loja: {store}")
             products = await self.supabase.get_products(filters)
 
             if products:
                 for product in products:
                     message = self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
-                    # Atualiza estatísticas
-                    await self.supabase.increment_product_stats(
-                        product["id"], "telegram_send_count"
-                    )
-
-                    # Pequena pausa entre mensagens
-                    import asyncio
+                    # Atualiza estatísticas (Ignore erros aqui para não travar o envio)
+                    try:
+                        await self.supabase.increment_product_stats(
+                            product["id"], "telegram_send_count"
+                        )
+                    except Exception as stats_err:
+                        logger.warning(f"Erro ao incrementar status: {stats_err}")
 
                     await asyncio.sleep(0.5)
             else:
@@ -296,8 +356,8 @@ Ex: /buscar fone bluetooth
                 )
 
         except Exception as e:
-            logger.error(f"Erro no comando de loja {store}: {e}")
-            await update.message.reply_text(f"❌ Erro ao buscar ofertas da loja.")
+            logger.error(f"Erro crítico no comando de loja {store}: {e}", exc_info=True)
+            await update.message.reply_text(f"❌ Ops! Tive um probleminha ao buscar ofertas da {store.title()}. Tente novamente em instantes!")
 
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /buscar [termo]"""
@@ -339,9 +399,7 @@ Ex: /buscar fone bluetooth
 
                 for product in products:
                     message = self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     # Pequena pausa
                     import asyncio
@@ -382,9 +440,7 @@ Ex: /buscar fone bluetooth
 
                 for product in products:
                     message = self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     import asyncio
 
@@ -407,9 +463,7 @@ Ex: /buscar fone bluetooth
 
             if product:
                 message = self._format_product_message(product)
-                await update.message.reply_text(
-                    message, parse_mode="HTML", disable_web_page_preview=False
-                )
+                await self._send_formatted_product_reply(update, product, message)
             else:
                 await update.message.reply_text("🎲 Nenhum produto encontrado.")
 
@@ -486,14 +540,14 @@ Ex: /buscar eletrônicos
             await update.message.reply_text("📊 Estatísticas indisponíveis no momento.")
 
     async def promo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /promo - Promoção em destaque"""
+        """Handler para /promo - Promoção em destaque com maior desconto"""
         try:
-            # Busca produto com maior desconto
+            # Seleciona o top 1 por desconto
             response = (
                 self.supabase.client.table("products")
                 .select("*")
-                .not_.is_("discount_percentage", "null")
                 .eq("is_active", True)
+                .not_.is_("discount_percentage", "null")
                 .order("discount_percentage", desc=True)
                 .limit(1)
                 .execute()
@@ -502,18 +556,21 @@ Ex: /buscar eletrônicos
             if response.data:
                 product = response.data[0]
                 message = self._format_product_message(product, highlight=True)
-
-                await update.message.reply_text(
-                    message, parse_mode="HTML", disable_web_page_preview=False
-                )
+                await self._send_formatted_product_reply(update, product, message)
             else:
-                await update.message.reply_text(
-                    "🔥 Nenhuma promoção em destaque no momento."
-                )
+                # Fallback para qualquer produto se não houver discount_percentage preenchido
+                product = await self.supabase.get_random_product()
+                if product:
+                    message = self._format_product_message(product, highlight=True)
+                    await self._send_formatted_product_reply(update, product, message)
+                else:
+                    await update.message.reply_text(
+                        "🔥 Nenhuma promoção em destaque no momento. Fique ligado no grupo!"
+                    )
 
         except Exception as e:
-            logger.error(f"Erro no comando /promo: {e}")
-            await update.message.reply_text("❌ Erro ao buscar promoção.")
+            logger.error(f"Erro crítico no comando /promo: {e}", exc_info=True)
+            await update.message.reply_text("❌ Tive um problema ao buscar a melhor promo. Tente o comando /cupom enquanto isso!")
 
     # ==================== NOVOS COMANDOS DINÂMICOS ====================
 
@@ -582,9 +639,7 @@ Ex: /buscar eletrônicos
 
                 for product in products:
                     message = self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     # Atualiza estatísticas
                     await self.supabase.increment_product_stats(
@@ -622,9 +677,7 @@ Ex: /buscar eletrônicos
 
                 for idx, product in enumerate(top_deals, 1):
                     message = f"*#{idx}* - " + self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     # Atualiza estatísticas
                     await self.supabase.increment_product_stats(
@@ -730,9 +783,7 @@ Configure suas preferências para receber recomendações personalizadas!
 
                 for product in recommendations:
                     message = self._format_product_message(product)
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     # Atualiza estatísticas
                     await self.supabase.increment_product_stats(
@@ -881,10 +932,7 @@ Configure suas preferências para receber recomendações personalizadas!
                     message = f"*#{idx} - {commission_rate}% de comissão*\n"
                     message += f"💵 R$ {commission_amount:.2f} por venda\n\n"
                     message += self._format_product_message(product)
-
-                    await update.message.reply_text(
-                        message, parse_mode="HTML", disable_web_page_preview=False
-                    )
+                    await self._send_formatted_product_reply(update, product, message)
 
                     # Atualiza estatísticas
                     await self.supabase.increment_product_stats(
@@ -912,22 +960,159 @@ Configure suas preferências para receber recomendações personalizadas!
                 "❌ Erro ao buscar produtos com maior comissão."
             )
 
+    # ==================== HANDLERS DE ENGAJAMENTO ====================
+
+    async def welcome_new_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """AIDA Welcome: Recepciona novos membros com foco em conversão e SEO"""
+        for new_member in update.message.new_chat_members:
+            if new_member.is_bot:
+                continue
+
+            first_name = new_member.first_name
+            
+            # AIDA + CTO Message
+            welcome_text = f"""
+🚨 <b>{first_name.upper()}, VOCÊ ACABA DE ENTRAR NO CLUBE DE OFERTAS AFILIADOTOP!</b> 🎯
+
+Aqui você não perde mais tempo procurando cupons. Nós garimpamos as melhores ofertas da <b>Shopee, Amazon, AliExpress e Awin</b> 24h por dia para você! 🚀
+
+🔥 <b>POR QUE FICAR AQUI?</b>
+• Descontos reais de até 80% 💸
+• Cupons exclusivos que expiram rápido ⏳
+• Seleção feita por especialistas em economia 🧠
+
+👉 <b>PARA COMEÇAR A ECONOMIZAR AGORA:</b>
+Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
+🔗 <a href="https://afiliado.top"><b>VER OPORTUNIDADES IMPERDÍVEIS</b></a>
+
+<i>Seja bem-vindo(a) e boas compras!</i>
+#Ofertas #Cupons #Economia #Shopee #Amazon
+            """
+            
+            # Botão de ação (CTO)
+            keyboard = [
+                [InlineKeyboardButton("🛒 VER MELHORES OFERTAS", url="https://afiliado.top")],
+                [InlineKeyboardButton("🎁 PEGAR CUPOM ALEATÓRIO", callback_data="random_coupon")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                welcome_text, 
+                parse_mode="HTML", 
+                reply_markup=reply_markup,
+                disable_web_page_preview=False
+            )
+
+    async def delete_status_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Limpa as mensagens de saída de membros para manter o grupo focado nas vendas"""
+        try:
+            await update.message.delete()
+        except:
+            pass
+
+    async def set_bot_commands(self):
+        """Configura o menu de comandos oficial do Bot no Telegram (SEO + UX)"""
+        from telegram import BotCommand
+        
+        commands = [
+            BotCommand("start", "🚀 Começar e Ver Ofertas VIP"),
+            BotCommand("cupom", "🎟️ Pegar Cupom de Desconto VIP"),
+            BotCommand("promo", "🔥 Ver Melhor Oferta do Momento"),
+            BotCommand("buscar", "🔍 Buscar Produto (ex: /buscar fone)"),
+            BotCommand("hoje", "🆕 Ver Novidades de Hoje"),
+            BotCommand("lojas", "🏪 Listar Lojas Parceiras"),
+            BotCommand("top", "🏆 Ver TOP 5 Descontos"),
+            BotCommand("recomendar", "✨ Ver Recomendações para Você"),
+            BotCommand("help", "🆘 Ajuda e Suporte"),
+        ]
+        
+        try:
+            await self.application.bot.set_my_commands(commands)
+            logger.info("[TELEGRAM] Menu de comandos SEO configurado com sucesso")
+        except Exception as e:
+            logger.error(f"[TELEGRAM] Erro ao configurar comandos: {e}")
+
+    async def awin_radar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Executa radar Awin via Telegram (Admin)"""
+        # Checagem simples de admin (pode ser expandida)
+        user_id = update.effective_user.id
+        # TODO: Adicionar checagem de admin real se necessário
+        
+        await update.message.reply_text("🔎 <b>Iniciando Radar Awin (MÁQUINA DE DINHEIRO)...</b>", parse_mode="HTML")
+        
+        try:
+            radar = CommissionRadarService()
+            # O usuário pediu "1.automaticamente": auto_dispatch=True
+            res = await radar.run_awin_radar(max_broadcasts=3, auto_dispatch=True)
+            
+            dispatched = res.get("dispatched", 0)
+            if dispatched > 0:
+                await update.message.reply_text(f"✅ <b>RADAR AWIN CONCLUÍDO!</b>\n\n🚀 {dispatched} ofertas quentes foram disparadas para o grupo!", parse_mode="HTML")
+            else:
+                await update.message.reply_text("📭 Nenhuma oferta nova encontrada no Radar Awin agora.", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"[Bot Radar Awin] {e}")
+            await update.message.reply_text(f"❌ Erro ao rodar radar Awin: {str(e)}")
+            
+    async def cj_radar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Executa radar CJ via Telegram (Admin)"""
+        await update.message.reply_text("🔎 <b>Iniciando Radar CJ (MÁQUINA DE DINHEIRO)...</b>", parse_mode="HTML")
+        
+        try:
+            radar = CommissionRadarService()
+            # Rodar com 40% de desconto conforme discutido no plano
+            res = await radar.run_cj_radar(min_discount=40.0, max_broadcasts=3, auto_dispatch=True)
+            
+            dispatched = res.get("dispatched", 0)
+            if dispatched > 0:
+                await update.message.reply_text(f"✅ <b>RADAR CJ CONCLUÍDO!</b>\n\n🚀 {dispatched} achadinhos VIP disparados para o grupo!", parse_mode="HTML")
+            else:
+                await update.message.reply_text("📭 Nenhuma oferta de +40% encontrada na CJ no momento.", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"[Bot Radar CJ] {e}")
+            await update.message.reply_text(f"❌ Erro ao rodar radar CJ: {str(e)}")
+
     # ==================== HANDLERS AUXILIARES ====================
 
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para mensagens de texto"""
-        text = update.message.text
+        """Handler para mensagens de texto (Acolhimento + NLP Lite)"""
+        if not update.message or not update.message.text:
+            return
+            
+        text = update.message.text.lower().strip()
+        user_name = update.effective_user.first_name
+        is_private = update.message.chat.type == "private"
 
-        # Verifica se é um link
-        if "http" in text.lower():
+        # 1. Detecção de Saudações (Apenas no Privado para ser amigável)
+        greetings = ["oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "tudo bem", "opa"]
+        if any(greet in text for greet in greetings) and is_private:
+            greeting_msg = f"Olá, {user_name}! Que alegria falar com você! 😊\n\nEu sou o seu assistente de ofertas do AfiliadoHub. Estou aqui para te ajudar a economizar.\n\n<b>Como posso te ajudar agora?</b>"
+            keyboard = [
+                [InlineKeyboardButton("🔍 Buscar um Produto", callback_data="help_search")],
+                [InlineKeyboardButton("🔥 Ver Ofertas de Hoje", callback_data="today_promo")],
+                [InlineKeyboardButton("🎟️ Pegar um Cupom VIP", callback_data="random_coupon")]
+            ]
             await update.message.reply_text(
-                "🔗 Detectei um link! Para adicionar produtos automaticamente, "
-                "use o painel web ou envie um arquivo CSV.",
-                parse_mode="Markdown",
+                greeting_msg, 
+                parse_mode="HTML", 
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
-        else:
+            return
+
+        # 2. Verifica se é um link
+        if "http" in text:
+            if is_private:
+                await update.message.reply_text(
+                    "🔗 <b>Detectei um link!</b>\n\nPara converter links automaticamente ou adicionar produtos, fale com o Administrador ou use o Painel Web.",
+                    parse_mode="HTML",
+                )
+            return
+
+        # 3. Caso contrário, resposta padrão educada (Apenas se for no privado)
+        if is_private:
             await update.message.reply_text(
-                "🤔 Não entendi. Use /help para ver os comandos disponíveis."
+                f"🤔 <b>Não entendi essa mensagem, {user_name}.</b>\n\nMas não se preocupe! Você pode usar o menu de comandos ou digitar /help para eu te mostrar o caminho das ofertas! ✨",
+                parse_mode="HTML"
             )
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -947,90 +1132,133 @@ Configure suas preferências para receber recomendações personalizadas!
 
     # ==================== MÉTODOS UTILITÁRIOS ====================
 
+    def _build_product_reply_markup(self, product: Dict[str, Any]) -> InlineKeyboardMarkup:
+        """Constrói um botão Inline com Link para Comprar"""
+        offer_link = product.get('short_link') or product.get('affiliate_link') or "https://afiliado.top"
+        keyboard = [[InlineKeyboardButton("🛒 COMPRAR AGORA", url=offer_link)]]
+        return InlineKeyboardMarkup(keyboard)
+
+    async def _send_formatted_product_reply(self, update: Update, product: Dict[str, Any], message: str):
+        """Helper para enviar o produto no chat do bot com foto (se houver) e botões."""
+        markup = self._build_product_reply_markup(product)
+        image_url = product.get('image_url')
+        discount = product.get("discount_percentage", 0)
+        is_private = update.effective_chat.type == "private"
+
+        async def send_msg(chat_id, repl_markup=markup):
+            try:
+                if image_url:
+                    return await self.application.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=image_url,
+                        caption=message,
+                        parse_mode="HTML",
+                        reply_markup=repl_markup
+                    )
+                else:
+                    return await self.application.bot.send_message(
+                        chat_id=chat_id,
+                        text=message,
+                        parse_mode="HTML",
+                        disable_web_page_preview=False,
+                        reply_markup=repl_markup
+                    )
+            except Exception as e:
+                logger.error(f"[TELEGRAM] Erro ao enviar mensagem para {chat_id}: {e}")
+                return None
+
+        # 1. Envia para o chat atual (Private ou Grupo)
+        sent_msg = await send_msg(update.effective_chat.id)
+
+        # 2. ESPELHAMENTO INTELIGENTE (Smart Mirroring)
+        # Se foi no Privado E é um achadinho TOP (>40% OFF), espelha no grupo automaticamente!
+        if is_private and discount and discount >= 40:
+            from ..utils.telegram_settings_manager import telegram_settings
+            group_id = telegram_settings.get_group_chat_id()
+            
+            if group_id:
+                user_name = update.effective_user.first_name
+                # Cabeçalho especial para gerar prova social no grupo
+                mirror_header = f"🔥 <b>MAQUINA DE ACHADINHOS!</b>\n"
+                mirror_header += f"🏆 <i>O(A) {user_name} acabou de garimpar essa oferta VIP pesquisando no nosso bot!</i>\n\n"
+                mirror_message = mirror_header + message
+                
+                # Envia para o grupo
+                await send_msg(group_id, repl_markup=markup)
+                logger.info(f"[Bot] Oferta de {discount}% OFF espelhada no grupo {group_id}")
+
     def _format_product_message(
         self, product: Dict[str, Any], highlight: bool = False
     ) -> str:
-        """Formata mensagem usando AIDA (Attention, Interest, Desire, Action) + Gatilhos Mentais"""
+        """AIDA + SEO + CTO: Formatação de alta conversão para o Telegram"""
 
-        store = product.get("store", "shopee")
+        store = product.get("store", "shopee").lower()
         emoji = STORE_EMOJIS.get(store, "🏪")
         store_name = store.replace("_", " ").title()
 
         price = product.get("current_price", 0)
         original_price = product.get("original_price")
         discount = product.get("discount_percentage", 0)
-
-        # ========== ATTENTION: Headline impactante ==========
-        if discount and discount > 0:
-            headline = f"🔥 SUPER DESCONTO {int(discount)}% OFF! 🔥"
-        else:
-            headline = f"✨ OFERTA ESPECIAL {emoji}"
-
-        if highlight:
-            headline = f"⚡ IMPERDÍVEL! " + headline
-
-        # ========== INTEREST: Nome do produto ==========
+        
         product_name = product.get("name", "Produto")
-        if len(product_name) > 80:
-            product_name = f"👜 {product_name[:80]}..."
+        offer_link = product.get('short_link') or product.get('affiliate_link') or "https://afiliado.top"
+
+        # ========== A (Attention): Headline impactante com SEO ==========
+        if discount and discount >= 40:
+            headline = f"🚨 <b>RELÂMPAGO: {int(discount)}% OFF EM {store_name.upper()}!</b>\n\n"
+        elif highlight:
+            headline = f"⚡ <b>IMPERDÍVEL: SELECIONADO PARA VOCÊ!</b>\n\n"
         else:
-            product_name = f"👜 {product_name}"
+            headline = f"🔥 <b>ACHADINHO {store_name.upper()} DETECTADO!</b>\n\n"
 
-        # ========== DESIRE: Preço e economia (Gatilho de Escassez) ==========
-        price_section = f"\n💰 Apenas R$ {price:.2f}"
+        # ========== I (Interest): Detalhes do Produto e Benefício ==========
+        interest = f"📦 <b><a href='{offer_link}'>{product_name}</a></b>\n\n"
 
-        if original_price and original_price > price and discount:
-            savings = original_price - price
-            price_section += f"\n📉 De ~~R$ {original_price:.2f}~~"
-            price_section += f"\n✅ Economize R$ {savings:.2f} HOJE!"
+        # ========== D (Desire): Comparação de Preço e Social Proof ==========
+        desire = ""
+        if original_price and original_price > price:
+            desire += f"❌ <s>De: R$ {original_price:.2f}</s>\n"
+        
+        if price > 0:
+            desire += f"✅ <b>Por apenas: R$ {price:.2f}</b>\n"
+        else:
+            desire += f"💰 <b>Consulte o preço especial no link!</b>\n"
 
-        # ========== DESIRE: Benefícios e social proof (Gatilhos de Autoridade + Prova Social) ==========
-        benefits = f"""
-✨ Por que você vai amar:
-✔️ Seleção premium AfiliadoTop
-✔️ Loja 100% Verificada e Segura  
-✔️ Melhor preço garantido hoje
-🚚 Entrega rápida em todo o Brasil"""
-
-        # Adiciona avaliação se existir (Prova Social)
         rating = product.get("rating")
         review_count = product.get("review_count", 0)
         if rating and rating > 0:
-            stars = "⭐" * int(rating)
-            benefits += f"\n{stars} {rating}/5 ({review_count:,} avaliações)"
+            desire += f"⭐ Avaliação: {rating}/5"
+            if review_count > 0:
+                desire += f" ({review_count:,}+ vendas)"
+            desire += "\n"
+        
+        desire += "\n"
 
-        # ========== ACTION: Call to action urgente (Gatilho de Urgência) ==========
-        cta = f"\n\n🛒 COMPRAR AGORA COM DESCONTO!"
+        # ========== A (Action / CTO): Call to Order Direto no Texto ==========
+        action = f"🛒 <b>COMPRE AQUI COM SEGURANÇA:</b>\n"
+        action += f"👉 <b><a href='{offer_link}'>CLIQUE PARA GARANTIR O SEU</a></b>\n\n"
+        action += "⚠️ <i>Atenção: Os preços podem subir a qualquer momento!</i>"
 
-        # Adiciona cupom se existir (Gatilho de Exclusividade)
+        # Adiciona cupom se existir
         coupon = product.get("coupon_code")
         if coupon:
-            expiry = product.get("coupon_expiry")
-            expiry_text = f" (Válido até {expiry[:10]})" if expiry else ""
-            cta += f"\n🎫 CUPOM EXCLUSIVO: `{coupon}`{expiry_text}"
+            action += f"\n\n🎫 <b>CUPOM:</b> <code>{coupon}</code>"
 
-        # Link de afiliado
-        link_text = f"\n🔗 Ver Produto: {product.get('affiliate_link')}"
-
-        # Adiciona categoria e tags
+        # ========== SEO Tags (Hashtags Relevantes) ==========
         category = product.get("category", "")
-        tags = product.get("tags", [])
-        if category or tags:
-            meta = f"\n\n📁 {category}" if category else ""
-            if tags:
-                tags_text = " ".join([f"#{tag}" for tag in tags[:3]])
-                meta += f" {tags_text}" if meta else f"\n\n{tags_text}"
-            link_text += meta
+        tags = [store_name.replace(" ", ""), "Oferta", "Cupom", "Desconto"]
+        if category:
+            tags.append(category.replace(" ", ""))
+        
+        meta = "\n\n" + " ".join([f"#{tag}" for tag in tags[:5]])
 
-        # Montar mensagem completa
-        message = f"{headline}\n\n{product_name}\n{price_section}\n{benefits}\n{cta}\n{link_text}"
-
-        return message.strip()
+        message = headline + interest + desire + action + meta
+        return message
 
     async def send_product_to_channel(
         self, chat_id: Optional[str], product: Dict[str, Any]
     ):
-        """Envia produto para um canal/grupo"""
+        """Envia produto para um canal/grupo utilizando botão inline e imagem"""
         try:
             # Garante que temos um token
             if not self.token:
@@ -1055,13 +1283,35 @@ Configure suas preferências para receber recomendações personalizadas!
             bot = self.application.bot if self.application else Bot(self.token)
 
             message = self._format_product_message(product)
+            markup = self._build_product_reply_markup(product)
+            image_url = product.get('image_url')
 
-            await bot.send_message(
-                chat_id=chat_id,
-                text=message,
-                parse_mode="HTML",
-                disable_web_page_preview=False,
-            )
+            if image_url:
+                try:
+                    await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=image_url,
+                        caption=message,
+                        parse_mode="HTML",
+                        reply_markup=markup,
+                    )
+                except Exception as e:
+                    logger.warning(f"[TELEGRAM] Erro no send_photo do canal, tentando texto de fallback: {e}")
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=message,
+                        parse_mode="HTML",
+                        disable_web_page_preview=False,
+                        reply_markup=markup,
+                    )
+            else:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                    disable_web_page_preview=False,
+                    reply_markup=markup,
+                )
 
             # Atualiza estatísticas
             await self.supabase.increment_product_stats(

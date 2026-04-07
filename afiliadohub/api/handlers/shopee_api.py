@@ -1,16 +1,16 @@
-"""
-Shopee API Endpoints for Frontend Integration
-FastAPI router with privacy-aware product listings and admin features
-"""
-
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os
+import httpx
+import html
+import logging
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-import logging
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..utils.shopee_client import create_shopee_client
 from ..utils.shopee_extensions import add_rate_limiting
 from ..utils.supabase_client import get_supabase_manager
+from ..utils.shopee_public_api import ShopeePublicAPI
 from .auth import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/shopee", tags=["shopee"])
@@ -31,6 +31,7 @@ class ShopeeProduct(BaseModel):
     rating: Optional[str] = Field(None, alias="ratingStar")
     discountRate: int = Field(alias="priceDiscountRate")
     shopName: str
+    shopId: int
     offerLink: str
 
     # Admin only fields
@@ -252,6 +253,34 @@ async def search_products(
     except Exception as e:
         logger.error(f"[Shopee API] Search error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/products/{item_id}/{shop_id}/extended")
+async def get_extended_product_details(
+    item_id: int, shop_id: int, current_user: Dict = Depends(get_current_user)
+):
+    """
+    Busca detalhes estendidos (Vídeo e Depoimentos) via Shopee Public API
+    """
+    try:
+        shopee_public = ShopeePublicAPI()
+        
+        async with shopee_public:
+            # Busca vídeo e meta
+            details = await shopee_public.get_product_extended_details(item_id, shop_id)
+            # Busca melhores depoimentos (reviews)
+            reviews = await shopee_public.get_product_reviews(item_id, shop_id, limit=3)
+            
+            return {
+                "itemId": item_id,
+                "shopId": shop_id,
+                "videoUrl": details.get("video_url"),
+                "reviews": reviews,
+                "details": details
+            }
+    except Exception as e:
+        logger.error(f"[Shopee API] Extended details error: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao buscar detalhes estendidos")
 
 
 @router.post("/generate-link")
@@ -563,63 +592,84 @@ async def send_product_to_telegram(
         # Usa os dados do produto enviados pelo frontend
         product = product_data
 
-        # Formata mensagem para Telegram usando AIDA
+        # Formata mensagem para Telegram estilo "Brutalist / Alta Conversão"
         price = float(product.get("priceMin", 0))
         discount = product.get("priceDiscountRate", 0)
         sales = product.get("sales", 0)
         rating = product.get("ratingStar", "N/A")
+        shop_type = product.get("shopType", 0)
+        product_name = product.get("productName", "Produto")
 
-        # AIDA: Attention (Atenção) - Título chamativo com emoji e desconto
-        attention = f"🔥 <b>OFERTA IMPERDÍVEL!</b> 🔥"
-        if discount > 0:
-            attention = f"🔥 <b>SUPER DESCONTO {discount}% OFF!</b> 🔥"
+        # Truncate Title em 60 caracteres para não poluir
+        if len(product_name) > 60:
+            product_name = product_name[:57] + "..."
+            
+        # Escape HTML characters to avoid 400 errors
+        product_name = html.escape(product_name)
 
-        # AIDA: Interest (Interesse) - Produto e preço atrativo
-        interest = f"\n\n🛍️ <b>{product['productName']}</b>"
-        interest += f"\n\n💰 <b>Apenas R$ {price:.2f}</b>"
+        # AIDA: Attention (Atenção Extrema)
+        if discount >= 40:
+            attention = f"🚨 <b>RELÂMPAGO COM {int(discount)}% OFF!</b>\n\n"
+        elif discount > 0:
+            attention = f"🔥 <b>ACHADINHO COM {int(discount)}% OFF!</b>\n\n"
+        else:
+            attention = f"✨ <b>OFERTA IMPERDÍVEL!</b>\n\n"
+
+        # AIDA: Interest (Produto + Preço Agressivo)
+        interest = f"📦 {product_name}\n\n"
 
         if discount > 0:
             original_price = price / (1 - discount / 100)
-            interest += f"\n<s>De R$ {original_price:.2f}</s>"
-            interest += f"\n<b>Economize R$ {(original_price - price):.2f}!</b>"
+            interest += f"❌ <s>De: R$ {original_price:.2f}</s>\n"
+        
+        interest += f"✅ <b>Por apenas: R$ {price:.2f}</b>\n\n"
 
-        # AIDA: Desire (Desejo) - Social proof e urgência
-        desire = "\n\n✨ <b>Por que você vai amar:</b>"
+        # AIDA: Desire (Autoridade em linha única)
+        badge = "👑 Loja Oficial" if shop_type == 1 else "⭐ Loja Indicada" if shop_type in (2, 4) else "🏬 Loja Shopee"
+        desire = f"{badge} | ⭐ {rating}"
+        if sales > 0:
+            desire += f" ({sales:,}+ Vendidos)\n\n"
+        else:
+            desire += "\n\n"
 
-        if sales > 1000:
-            desire += f"\n✅ Mais de {sales:,} pessoas já compraram!"
-        elif sales > 100:
-            desire += f"\n✅ {sales:,}+ vendas confirmadas"
+        # AIDA: Action (CTA e Link direto no texto para repasses e WhatsApp)
+        # Se você já passou pelo encurtador interno use shortLink
+        offer_link = product.get("shortLink") or product.get("offerLink", "Link")
+        action = f"🛒 <b>COMPRE AQUI 👇</b>\n🔗 {offer_link}\n\n"
+        
+        # Inserção de Depoimentos Reais (PROVA SOCIAL)
+        reviews = product_data.get("reviews", [])
+        if reviews:
+            action += "💬 <b>O QUE DIZEM OS COMPRADORES:</b>\n"
+            for r in reviews[:3]:
+                # Estrelas e comentário limpo (Escapado para HTML)
+                comment = html.escape(r.get('comment', 'Produto excelente!'))
+                action += f"⭐ {comment}\n"
+            action += "\n"
 
-        if rating and rating != "N/A":
-            desire += f"\n⭐ Avaliação {rating}/5.0 - Produto aprovado!"
-
-        desire += f"\n🏪 Loja verificada: {product.get('shopName', 'N/A')}"
-        desire += "\n📦 Entrega rápida e segura"
-        desire += "\n🔒 Compra 100% protegida"
-
-        if discount > 0:
-            desire += f"\n\n⚡ <b>ATENÇÃO: Promoção por tempo limitado!</b>"
-
-        # AIDA: Action (Ação) - Call to action claro
-        action = "\n\n👇 <b>GARANTA O SEU AGORA!</b> 👇"
+        action += "⏳ <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
 
         # Monta mensagem final
         message = attention + interest + desire + action
 
-        # Envia para Telegram via API
-        telegram_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-
-        # Valida URL da imagem
-        image_url = product.get("imageUrl", "")
+        # Verifica se temos VÍDEO ou apenas FOTO
+        video_url = product_data.get("videoUrl")
+        telegram_url = f"https://api.telegram.org/bot{bot_token}/sendVideo" if video_url else f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        media_field = "video" if video_url else "photo"
+        media_url = video_url or product.get("imageUrl", "")
 
         # Garante que a URL seja HTTPS
-        if image_url.startswith("http://"):
-            image_url = image_url.replace("http://", "https://", 1)
+        if media_url.startswith("http://"):
+            media_url = media_url.replace("http://", "https://", 1)
+
+        logger.info(f"[Telegram Post] Media Type: {media_field}")
+        logger.info(f"[Telegram Post] URL: {media_url[:100]}...")
+        logger.info(f"[Telegram Post] Chat ID: {channel_id}")
+        logger.info(f"[Telegram Post] Message Len: {len(message)}")
 
         payload = {
             "chat_id": channel_id,
-            "photo": image_url,
+            media_field: media_url,
             "caption": message,
             "parse_mode": "HTML",
             "reply_markup": {
@@ -633,6 +683,10 @@ async def send_product_to_telegram(
                 ]
             },
         }
+
+        # Se for vídeo, adiciona parâmetros de otimização
+        if video_url:
+            payload["supports_streaming"] = True
 
         try:
             async with httpx.AsyncClient() as http_client:

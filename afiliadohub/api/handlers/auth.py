@@ -1,11 +1,20 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, EmailStr, Field
+import os
+import base64
 import logging
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, EmailStr, Field
 from ..utils.supabase_client import get_supabase_manager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+security = HTTPBearer()
+
+# --- JWT Secret (Supabase signs tokens with this) ---
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+if not SUPABASE_JWT_SECRET:
+    logger.error("[Auth] SUPABASE_JWT_SECRET está vazio no .env")
 
 
 # --- Models ---
@@ -18,20 +27,17 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=6)
     name: str = Field(..., min_length=2)
-    role: str = "client"  # Default role
+    role: str = "client"
 
 
 # --- Handlers ---
 @router.post("/register")
-async def register(user: UserRegister):
+def register(user: UserRegister):
     """Registra um novo usuário (Cliente por padrão)"""
     supabase = get_supabase_manager()
-
-    # Force role to stay safe if needed, or allow 'client' only for public registration
-    final_role = "client"
+    final_role = "client"  # Força role seguro. Admin é promovido manualmente no Supabase.
 
     try:
-        # Create user in Supabase Auth with metadata
         auth_response = supabase.client.auth.sign_up(
             {
                 "email": user.email,
@@ -52,13 +58,15 @@ async def register(user: UserRegister):
                 "role": final_role,
             },
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        # Supabase raises exceptions for existing users, weak passwords, etc.
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"[Auth] Erro no registro: {repr(e)}")
+        raise HTTPException(status_code=400, detail="Erro ao criar conta. Verifique os dados.")
 
 
 @router.post("/login")
-async def login(credentials: UserLogin):
+def login(credentials: UserLogin):
     """Faz login e retorna token + role"""
     supabase = get_supabase_manager()
 
@@ -70,12 +78,10 @@ async def login(credentials: UserLogin):
         if not auth_response.user or not auth_response.session:
             raise HTTPException(status_code=401, detail="Credenciais inválidas")
 
-        # Extract metadata - SECURITY FIX: Check app_metadata first (secure)
+        # Check app_metadata first (secure — só o backend pode editar)
+        # Fallback para user_metadata por compatibilidade
         app_meta = auth_response.user.app_metadata or {}
         user_meta = auth_response.user.user_metadata or {}
-
-        # Check app_metadata first (secure, only backend can edit)
-        # Fallback to user_metadata for backwards compatibility
         role = app_meta.get("role") or user_meta.get("role", "client")
         name = user_meta.get("name", "Usuário")
 
@@ -89,40 +95,41 @@ async def login(credentials: UserLogin):
                 "role": role,
             },
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        # Simple error message for security
+        logger.error(f"[Auth] Erro no login: {repr(e)}")
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
 
 
 # --- Authentication Dependencies ---
 
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-security = HTTPBearer()
-
-
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-):
+) -> dict:
     """
-    Dependency para validar token e retornar usuário atual
-    Usado em rotas que requerem autenticação
+    Valida token JWT do Supabase com verificação de assinatura.
+    Retorna os dados do usuário ou levanta 401.
     """
+    import jwt
+
     token = credentials.credentials
 
+    if not SUPABASE_JWT_SECRET:
+        logger.error("[Auth] SUPABASE_JWT_SECRET não configurado")
+        raise HTTPException(status_code=500, detail="Servidor com configuração incompleta")
+
     try:
-        # Decode JWT token (Supabase JWT)
-        import jwt
+        # Verifica assinatura real com o JWT Secret do Supabase
+        decoded = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",  # Supabase define aud="authenticated"
+        )
 
-        # Supabase tokens são auto-contidos, podemos decodificar sem verificar
-        # PyJWT valida a expiração (exp) automaticamente por padrão
-        decoded = jwt.decode(token, options={"verify_signature": False})
-
-        # SECURITY FIX: Check app_metadata first (secure)
         app_metadata = decoded.get("app_metadata", {})
         user_metadata = decoded.get("user_metadata", {})
-
-        # Check app_metadata first, fallback to user_metadata
         role = app_metadata.get("role") or user_metadata.get("role", "client")
 
         return {
@@ -130,29 +137,33 @@ async def get_current_user(
             "email": decoded.get("email"),
             "name": user_metadata.get("name", "Usuário"),
             "role": role,
-            "token": token,
+            "token": token
         }
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401, detail="Sessão expirada. Faça login novamente."
-        )
-    except jwt.InvalidTokenError:
+
+    except jwt.ExpiredSignatureError as e:
+        logger.error(f"[Auth JWT] ExpiredSignatureError: {str(e)}")
+        raise HTTPException(status_code=401, detail="Sessão expirada. Faça login novamente.")
+    except jwt.InvalidAudienceError as e:
+        logger.error(f"[Auth JWT] InvalidAudienceError: {str(e)}")
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except jwt.InvalidSignatureError as e:
+        logger.error(f"[Auth JWT] InvalidSignatureError: {str(e)}")
+        raise HTTPException(status_code=401, detail="Token inválido")
+    except jwt.InvalidTokenError as e:
+        logger.error(f"[Auth JWT] InvalidTokenError ({type(e).__name__}): {str(e)}")
         raise HTTPException(status_code=401, detail="Token inválido")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[Auth] Token decode error: {e}")
+        logger.error(f"[Auth JWT] Erro inesperado ao validar token: {type(e).__name__} -> {str(e)}")
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
-async def get_current_admin(current_user: dict = Depends(get_current_user)):
+async def get_current_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """
-    Dependency para validar que usuário é admin
-    Usado em rotas administrativas
+    Valida que usuário é admin.
+    Usado em rotas administrativas.
     """
     if current_user.get("role") != "admin":
-        raise HTTPException(
-            status_code=403, detail="Acesso negado. Apenas administradores."
-        )
-
+        raise HTTPException(status_code=403, detail="Acesso negado. Apenas administradores.")
     return current_user

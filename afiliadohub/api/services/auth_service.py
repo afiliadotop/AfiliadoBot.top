@@ -1,183 +1,121 @@
-import os
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
-from supabase import create_client, Client
+from ..utils.supabase_client import get_supabase_manager
 
 logger = logging.getLogger(__name__)
 
-# Supabase Client
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.warning("[AUTH] Supabase credentials not configured")
-    supabase: Optional[Client] = None
-else:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 
 class AuthService:
-    """Serviço de autenticação usando Supabase Auth"""
+    """Serviço de autenticação usando Supabase Auth via SupabaseManager singleton."""
 
-    def register(
-        self, email: str, password: str, name: str
-    ) -> Optional[Dict[str, Any]]:
-        """Registra um novo usuário"""
-        if not supabase:
-            logger.error("[AUTH] Supabase not configured")
-            return None
+    def register(self, email: str, password: str, name: str) -> Optional[Dict[str, Any]]:
+        """Registra um novo usuário."""
+        supabase = get_supabase_manager()
 
         try:
-            # Sign up com Supabase Auth
-            res = supabase.auth.sign_up(
+            res = supabase.client.auth.sign_up(
                 {
                     "email": email,
                     "password": password,
-                    "options": {"data": {"name": name}},  # Metadata do usuário
+                    "options": {"data": {"name": name}},
                 }
             )
 
             if res.user:
-                logger.info(f"[AUTH] User registered: {email}")
+                logger.info(f"[AUTH] Usuário registrado: {email}")
                 return {
                     "success": True,
                     "user": {"id": res.user.id, "email": res.user.email, "name": name},
                     "message": "Conta criada! Verifique seu email.",
                 }
-            else:
-                logger.error(f"[AUTH] Registration failed for {email}")
-                return {"success": False, "error": "Erro ao criar conta"}
+
+            logger.error(f"[AUTH] Falha no registro para {email}")
+            return {"success": False, "error": "Erro ao criar conta"}
 
         except Exception as e:
-            logger.error(f"[AUTH] Registration error: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"[AUTH] Erro de registro: {e}")
+            return {"success": False, "error": "Erro interno ao criar conta"}
 
     def login(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """Faz login de um usuário existente"""
-        if not supabase:
-            logger.error("[AUTH] Supabase not configured")
-            # Fallback: Mock admin login
-            if email == "admin@afiliado.top" and password == "admin":
-                return self._create_mock_token(email, "Administrador", "admin")
-            return None
+        """Faz login de um usuário existente."""
+        supabase = get_supabase_manager()
 
         try:
-            # Sign in com Supabase Auth
-            res = supabase.auth.sign_in_with_password(
+            res = supabase.client.auth.sign_in_with_password(
                 {"email": email, "password": password}
             )
 
             if res.user and res.session:
-                # Buscar perfil do usuário
-                profile_res = (
-                    supabase.table("user_profiles")
-                    .select("*")
-                    .eq("id", res.user.id)
-                    .single()
-                    .execute()
-                )
+                user_meta = res.user.user_metadata or {}
+                app_meta = res.user.app_metadata or {}
+                role = app_meta.get("role") or user_meta.get("role", "client")
 
-                profile = profile_res.data if profile_res.data else {}
-
-                logger.info(f"[AUTH] User logged in: {email}")
+                logger.info(f"[AUTH] Login: {email} (role={role})")
                 return {
                     "access_token": res.session.access_token,
-                    "refresh_token": res.session.refresh_token,
                     "token_type": "bearer",
                     "user": {
                         "id": res.user.id,
                         "email": res.user.email,
-                        "name": profile.get("name", "Usuário"),
-                        "subscription_status": profile.get(
-                            "subscription_status", "trial"
-                        ),
-                        "role": res.user.user_metadata.get("role", "user"),
+                        "name": user_meta.get("name", "Usuário"),
+                        "role": role,
                     },
                 }
-            else:
-                logger.error(f"[AUTH] Login failed for {email}")
-                return None
+
+            logger.error(f"[AUTH] Falha no login para {email}")
+            return None
 
         except Exception as e:
-            logger.error(f"[AUTH] Login error: {e}")
-            # Fallback para admin mock em caso de erro
-            if email == "admin@afiliado.top" and password == "admin":
-                return self._create_mock_token(email, "Administrador", "admin")
+            logger.error(f"[AUTH] Erro de login: {e}")
             return None
 
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Verifica um token JWT do Supabase"""
-        if not supabase:
-            return None
+        """Verifica um token JWT via Supabase."""
+        supabase = get_supabase_manager()
 
         try:
-            # Supabase gerencia a verificação do token
-            user = supabase.auth.get_user(token)
-            if user:
+            user = supabase.client.auth.get_user(token)
+            if user and user.user:
+                user_meta = user.user.user_metadata or {}
+                app_meta = user.user.app_metadata or {}
+                role = app_meta.get("role") or user_meta.get("role", "client")
                 return {
-                    "sub": user.user.email,
-                    "user_id": user.user.id,
-                    "role": user.user.user_metadata.get("role", "user"),
+                    "sub": user.user.id,
+                    "email": user.user.email,
+                    "role": role,
                 }
             return None
         except Exception as e:
-            logger.error(f"[AUTH] Token verification error: {e}")
+            logger.error(f"[AUTH] Erro ao verificar token: {e}")
             return None
-
-    def _create_mock_token(self, email: str, name: str, role: str) -> Dict[str, Any]:
-        """Cria token mock para admin (fallback)"""
-        import jwt
-
-        SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret_key_123")
-        ALGORITHM = "HS256"
-
-        expire = datetime.utcnow() + timedelta(days=1)
-        to_encode = {"sub": email, "name": name, "role": role, "exp": expire}
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-        return {
-            "access_token": encoded_jwt,
-            "token_type": "bearer",
-            "user": {
-                "email": email,
-                "name": name,
-                "role": role,
-                "subscription_status": "active",
-            },
-        }
 
     def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Busca perfil completo do usuário"""
-        if not supabase:
-            return None
+        """Busca perfil completo do usuário."""
+        supabase = get_supabase_manager()
 
         try:
-            profile_res = (
-                supabase.table("user_profiles")
+            result = (
+                supabase.client.table("user_profiles")
                 .select("*")
                 .eq("id", user_id)
                 .single()
                 .execute()
             )
-
-            return profile_res.data
+            return result.data
         except Exception as e:
-            logger.error(f"[AUTH] Error fetching profile: {e}")
+            logger.error(f"[AUTH] Erro ao buscar perfil: {e}")
             return None
 
     def update_user_profile(self, user_id: str, data: Dict[str, Any]) -> bool:
-        """Atualiza perfil do usuário"""
-        if not supabase:
-            return False
+        """Atualiza perfil do usuário."""
+        supabase = get_supabase_manager()
 
         try:
-            supabase.table("user_profiles").update(data).eq("id", user_id).execute()
-
-            logger.info(f"[AUTH] Profile updated for user {user_id}")
+            supabase.client.table("user_profiles").update(data).eq("id", user_id).execute()
+            logger.info(f"[AUTH] Perfil atualizado para {user_id}")
             return True
         except Exception as e:
-            logger.error(f"[AUTH] Error updating profile: {e}")
+            logger.error(f"[AUTH] Erro ao atualizar perfil: {e}")
             return False
 
 

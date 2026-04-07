@@ -37,6 +37,8 @@ from .handlers.advanced_analytics import AdvancedAnalytics
 from .handlers.export_reports import ReportExporter
 from .handlers.health import router as health_router
 from .handlers.analytics_api import router as analytics_router  # NEW: Analytics API
+from .handlers.awin_api import router as awin_router  # Awin Affiliate LinkBuilder
+from .handlers.cj_api import router as cj_router  # CJ Affiliate API
 from .utils.supabase_client import get_supabase_manager
 from .utils.logger import setup_logger
 from .utils.scheduler import scheduler
@@ -113,26 +115,36 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+# CORS — origens explícitas. "*" + credentials é inválido nos browsers modernos.
+_env = os.getenv("ENVIRONMENT", "production")
+_prod_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "https://afiliadobot.top").split(",")
+    if o.strip()
+]
+_dev_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+ALLOWED_ORIGINS = _dev_origins + _prod_origins if _env == "development" else _prod_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",  # Vite default
-        "http://127.0.0.1:5173",
-        "*",  # Allow all for development
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
+# Request logging — loga método, path, status e duração de cada request
+from .middleware.request_logging import RequestLoggingMiddleware
+app.add_middleware(RequestLoggingMiddleware)
+
 # ==================== ROUTERS ====================
-# Register API routers
-app.include_router(analytics_router)  # Analytics endpoints: /analytics/*
-app.include_router(health_router)  # Health check: /health
+# Register API routers (Moved to bottom section for consistency with /api prefix)
 
 
 # ==================== MODELOS PYDANTIC ====================
@@ -155,6 +167,18 @@ class TelegramMessage(BaseModel):
     message: Optional[str] = None
     product_id: Optional[int] = None
 
+class TelegramOfferPayload(BaseModel):
+    title: str
+    description: Optional[str] = None
+    affiliate_link: str
+    short_link: Optional[str] = None
+    category: Optional[str] = None
+    original_price: Optional[float] = None
+    discount_price: Optional[float] = None
+    coupon_code: Optional[str] = None
+    coupon_expiry: Optional[str] = None
+    store: str
+    is_active: bool = True
 
 # ==================== DEPENDÊNCIAS DE SEGURANÇA ====================
 
@@ -162,9 +186,13 @@ class TelegramMessage(BaseModel):
 async def verify_admin_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    """Verifica token Bearer para ações administrativas"""
+    """Verifica token Bearer para ações administrativas (ADMIN_API_KEY obrigatório)."""
     if not ADMIN_API_KEY:
-        return True  # Modo dev inseguro se não houver chave
+        # Sem chave configurada — negar por segurança (nunca bypassar silenciosamente)
+        raise HTTPException(
+            status_code=503,
+            detail="ADMIN_API_KEY não configurada. Configure a variável de ambiente.",
+        )
     if credentials.credentials != ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Token de administração inválido")
     return credentials.credentials
@@ -347,13 +375,19 @@ async def ml_oauth_callback(code: str = Query(...)):
 
 
 # Registrar routers
-app.include_router(health_router)  # Health check (no prefix - root level)
+# --- Register API routers (consistent order) ---
+app.include_router(health_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(products_router, prefix="/api")
 app.include_router(shopee_router, prefix="/api")
 app.include_router(mercadolivre_router, prefix="/api")
 app.include_router(telegram_settings_router, prefix="/api")
-app.include_router(affiliate_router, prefix="/api")  # Affiliate bot-tools endpoints
+app.include_router(affiliate_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
+app.include_router(awin_router, prefix="/api")  # Awin Affiliate LinkBuilder
+app.include_router(cj_router, prefix="/api")   # CJ Affiliate API
+
+logger.info("[Main] Todos os roteadores API registrados sob o prefixo /api")
 
 # Feed Router
 from .handlers.feed_api import router as feed_router
@@ -362,18 +396,46 @@ if feed_router:
     app.include_router(feed_router, prefix="/api")
 
 
-@app.post("/api/telegram/webhook")
-async def telegram_webhook(request: Request):
-    """Recebe atualizações do Telegram (Mensagens dos usuários)"""
+# Rota /api/telegram/webhook definida acima (linha 247) — esta duplicata foi removida.
+
+@app.post("/api/telegram/post-offer")
+async def post_offer_to_telegram(payload: TelegramOfferPayload):
+    """Endpoint para enviar uma oferta diretamente para o Telegram (da UI)"""
+    from .handlers.telegram import TelegramBot
+    from .utils.telegram_settings_manager import telegram_settings
+    
     try:
-        data = await request.json()
-        if bot and telegram_app:
-            update = Update.de_json(data, bot)
-            await telegram_app.process_update(update)
-        return {"status": "ok"}
+        tg_helper = TelegramBot()
+        chat_id = telegram_settings.get_group_chat_id()
+        if not chat_id:
+            raise HTTPException(status_code=400, detail="Chat ID do Telegram não configurado no painel.")
+            
+        # Convert Payload to Product Dict format expected by `send_product_to_channel`
+        product_dict = {
+            "id": 0,
+            "name": payload.title,
+            "title": payload.title,
+            "description": payload.description,
+            "affiliate_link": payload.affiliate_link,
+            "short_link": payload.short_link,
+            "category": payload.category or "awin",
+            "original_price": payload.original_price,
+            "discount_price": payload.discount_price,
+            "coupon_code": payload.coupon_code,
+            "coupon_expiry": payload.coupon_expiry,
+            "store": payload.store,
+            "is_active": payload.is_active,
+            "tags": [],
+        }
+        
+        success = await tg_helper.send_product_to_channel(chat_id, product_dict)
+        if not success:
+            raise HTTPException(status_code=500, detail="Erro ao enviar mensagem para o Telegram")
+            
+        return {"status": "success", "message": "Oferta enviada com sucesso"}
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return {"status": "error", "detail": str(e)}
+        logger.error(f"[TELEGRAM] Erro no post-offer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/telegram/send", dependencies=[Depends(verify_cron_token)])

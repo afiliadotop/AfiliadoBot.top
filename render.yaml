@@ -52,4 +52,16 @@ services:
       # Runtime
       - key: RUN_SCHEDULER
         value: "false"
+      # Commission Junction (CJ)
+      - key: CJ_API_TOKEN
+        sync: false
+      - key: CJ_COMPANY_ID
+        sync: false
+      - key: CJ_PID
+        sync: false
+      # Awin
+      - key: AWIN_PUBLISHER_ID
+        sync: false
+      - key: AWIN_API_TOKEN
+        sync: false
 

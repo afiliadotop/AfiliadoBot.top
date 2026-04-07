@@ -211,4 +211,4 @@ def add_rate_limiting(client):
         client.graphql_query = rate_limited_query
         client.get_rate_limit_status = lambda: client._rate_limiter.get_status()
 
-        logger.info("✅ Rate limiting ativado (2000 req/h)")
+        logger.info("[OK] Rate limiting ativado (2000 req/h)")

@@ -1,26 +1,29 @@
 """
-Health check endpoint para monitoring
+Health check endpoints para monitoring.
 ITIL Activity: Deliver & Support (Monitoring)
 """
 
-from fastapi import APIRouter
+import os
+import logging
+from fastapi import APIRouter, Depends
 from datetime import datetime
 import psutil
-import os
+
+from .auth import get_current_admin
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health")
 async def health_check():
     """
-    Health check básico do sistema
+    Health check básico do sistema — sem autenticação (para load balancers).
 
     Returns:
-        - status: ok/degraded/down
+        - status: ok
         - timestamp: UTC timestamp
         - version: versão da API
-        - uptime: tempo de uptime em segundos
     """
     return {
         "status": "ok",
@@ -30,30 +33,26 @@ async def health_check():
     }
 
 
-@router.get("/health/detailed")
+@router.get("/health/detailed", dependencies=[Depends(get_current_admin)])
 async def health_check_detailed():
     """
-    Health check detalhado com métricas do sistema
-
-    Requer autenticação (admin)
+    Health check detalhado com métricas do sistema — SOMENTE ADMIN.
     """
     try:
-        # Métricas do sistema
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
 
-        # Verificar database (tentar ping)
         db_status = "ok"
         try:
             from ..utils.supabase_client import get_supabase_manager
 
             supabase = get_supabase_manager()
-            # Quick query to test connection
             result = supabase.client.table("stores").select("id").limit(1).execute()
             db_status = "ok" if result.data is not None else "error"
         except Exception as e:
-            db_status = f"error: {str(e)}"
+            logger.error(f"[Health] DB check falhou: {e}")
+            db_status = "error"  # Não expõe detalhes ao cliente
 
         return {
             "status": "ok",
@@ -70,43 +69,38 @@ async def health_check_detailed():
             "environment": os.getenv("ENVIRONMENT", "production"),
         }
     except Exception as e:
+        logger.error(f"[Health] Erro no health check detalhado: {e}")
         return {
             "status": "error",
             "timestamp": datetime.utcnow().isoformat(),
-            "error": str(e),
         }
 
 
 @router.get("/health/ready")
 async def readiness_check():
     """
-    Readiness check - verifica se serviço está pronto para receber tráfego
-
-    Usado por load balancers/orchestrators
+    Readiness check — verifica se o serviço está pronto para receber tráfego.
+    Usado por load balancers / orchestrators.
     """
     try:
-        # Verificar dependências críticas
         from ..utils.supabase_client import get_supabase_manager
 
         supabase = get_supabase_manager()
-
-        # Test database
         result = supabase.client.table("stores").select("id").limit(1).execute()
 
         if result.data is not None:
             return {"status": "ready", "timestamp": datetime.utcnow().isoformat()}
-        else:
-            return {"status": "not_ready", "reason": "database_error"}, 503
+        return {"status": "not_ready", "reason": "database_error"}, 503
 
     except Exception as e:
-        return {"status": "not_ready", "reason": str(e)}, 503
+        logger.error(f"[Health] Readiness check falhou: {e}")
+        return {"status": "not_ready", "reason": "dependency_unavailable"}, 503
 
 
 @router.get("/health/live")
 async def liveness_check():
     """
-    Liveness check - verifica se serviço está vivo
-
-    Usado por orchestrators para restart automático
+    Liveness check — verifica se o serviço está vivo.
+    Usado por orchestrators para restart automático.
     """
     return {"status": "alive", "timestamp": datetime.utcnow().isoformat()}

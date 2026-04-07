@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "afiliadohub"
+version = "1.0.0"
+description = "Plataforma de gestão de afiliados com automação de Telegram"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "supabase",
+    "python-telegram-bot",
+    "pandas",
+    "httpx",
+    "python-dotenv",
+    "telethon",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["afiliadohub*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests", "afiliadohub/api/tests"]

@@ -183,25 +183,65 @@ class ShopeeScraper:
                 "attributes": item.get("attributes", []),
                 "tier_variations": item.get("tier_variations", []),
                 "models": item.get("models", []),
-                "wholesale_tier_list": item.get("wholesale_tier_list", []),
                 "video_info_list": item.get("video_info_list", []),
                 "liked_count": item.get("liked_count", 0),
                 "cmt_count": item.get("cmt_count", 0),
                 "view_count": item.get("view_count", 0),
-                "condition": item.get("condition", ""),
-                "size_chart": item.get("size_chart", ""),
                 "item_rating": item.get("item_rating", {}),
-                "is_preferred_plus_seller": item.get("is_preferred_plus_seller", False),
                 "is_official_shop": item.get("is_official_shop", False),
-                "is_mart": item.get("is_mart", False),
-                "is_senior_mall": item.get("is_senior_mall", False),
             }
 
+            # Tenta extrair a melhor URL de vídeo
+            video_list = item.get("video_info_list", [])
+            if video_list and len(video_list) > 0:
+                # Pega o primeiro vídeo (geralmente o principal)
+                video = video_list[0]
+                details["video_url"] = video.get("video_url")
+            
             return details
 
         except Exception as e:
             logger.error(f"Erro no parse de detalhes: {e}")
             return None
+
+    async def get_product_ratings(self, item_id: int, shop_id: int, limit: int = 5) -> List[Dict]:
+        """Busca depoimentos (reviews) de um produto com foco em 5 estrelas e mídia"""
+        try:
+            url = f"{self.base_url}/api/v2/item/get_ratings"
+            
+            params = {
+                "itemid": item_id,
+                "shopid": shop_id,
+                "offset": 0,
+                "limit": limit * 2, # Pega o dobro para filtrar
+                "filter": 1,        # 1 = Filtras apenas com Foto/Vídeo (Maior Prova Social)
+                "type": 0           # 0 = Todos os tipos (mas filtraremos 5 estrelas manual)
+            }
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": f"{self.base_url}/product/{shop_id}/{item_id}",
+            }
+
+            async with self.session.get(url, params=params, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    ratings = data.get("data", {}).get("ratings", [])
+                    
+                    # Filtra apenas avaliações de 5 estrelas e com texto
+                    best_ratings = [
+                        r for r in ratings 
+                        if r.get("rating_star") == 5 and r.get("comment") and len(r.get("comment", "")) > 10
+                    ]
+                    
+                    # Limita ao solicitado
+                    return best_ratings[:limit]
+                else:
+                    logger.error(f"Erro ao buscar ratings: {response.status}")
+                    return []
+        except Exception as e:
+            logger.error(f"Erro ao buscar reviews: {e}")
+            return []
 
     async def update_daily_products(self, categories: List[str] = None):
         """Atualiza produtos diariamente de categorias específicas"""

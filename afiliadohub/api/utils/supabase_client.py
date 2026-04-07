@@ -1,9 +1,12 @@
 import os
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import asyncio
 
 from supabase import create_client, Client
+
+logger = logging.getLogger(__name__)
 
 
 class SupabaseManager:
@@ -25,11 +28,10 @@ class SupabaseManager:
             raise ValueError("SUPABASE_URL e SUPABASE_KEY devem ser configurados")
 
         try:
-            # Simplificando opções para evitar erros de compatibilidade com versões recentes do supabase-py
             self._client = create_client(url, key)
-            print("[INFO] Cliente Supabase inicializado")
+            logger.info("[Supabase] Cliente inicializado")
         except Exception as e:
-            print(f"[ERROR] Erro ao inicializar Supabase: {e}")
+            logger.error(f"[Supabase] Erro ao inicializar cliente: {e}")
             raise
 
     @property
@@ -79,7 +81,7 @@ class SupabaseManager:
                 raise Exception("Nenhum dado retornado ao inserir produto")
 
         except Exception as e:
-            print(f"[ERRO] Erro ao inserir produto: {e}")
+            logger.error(f"[Supabase] Erro ao inserir produto: {e}")
             raise
 
     async def bulk_insert_products(
@@ -124,7 +126,7 @@ class SupabaseManager:
             except Exception as e:
                 results["errors"] += len(batch)
                 results["error_messages"].append(str(e))
-                print(f"[ERRO] Erro no batch {i//batch_size + 1}: {e}")
+                logger.error(f"[Supabase] Erro no batch {i//batch_size + 1}: {e}")
 
         return results
 
@@ -167,7 +169,7 @@ class SupabaseManager:
             return response.data
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar produtos: {e}")
+            logger.error(f"[Supabase] Erro ao buscar produtos: {e}")
             return []
 
     async def get_random_product(
@@ -191,7 +193,7 @@ class SupabaseManager:
             return response.data[0] if response.data else None
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar produto aleatório: {e}")
+            logger.error(f"[Supabase] Erro ao buscar produto aleatório: {e}")
             return None
 
     async def update_product_price(self, product_id: int, new_price: float) -> bool:
@@ -211,7 +213,7 @@ class SupabaseManager:
             return len(response.data) > 0
 
         except Exception as e:
-            print(f"[ERRO] Erro ao atualizar preço: {e}")
+            logger.error(f"[Supabase] Erro ao atualizar preço: {e}")
             return False
 
     # ==================== MÉTODOS PARA ESTATÍSTICAS ====================
@@ -221,6 +223,10 @@ class SupabaseManager:
     ) -> bool:
         """Incrementa estatísticas de um produto"""
         try:
+            if not product_id or int(product_id) <= 0:
+                logger.debug(f"[Supabase] Stat ignore: product_id <= 0 ({product_id})")
+                return False
+                
             # CRÍTICO: Se for telegram_send_count, atualiza last_sent PRIMEIRO
             if stat_type == "telegram_send_count":
                 from datetime import datetime
@@ -245,8 +251,8 @@ class SupabaseManager:
                             "telegram_send_count": current_count + increment,
                         }
                     ).eq("product_id", int(product_id)).execute()
-                    print(
-                        f"[INFO] Produto {product_id} - last_sent atualizado para {now}"
+                    logger.info(
+                        f"[Supabase] Produto {product_id} - last_sent atualizado para {now}"
                     )
                 else:
                     # Cria novo registro
@@ -258,8 +264,8 @@ class SupabaseManager:
                             "click_count": 0,
                         }
                     ).execute()
-                    print(
-                        f"[INFO] Produto {product_id} - registro criado com last_sent {now}"
+                    logger.info(
+                        f"[Supabase] Produto {product_id} - registro criado com last_sent {now}"
                     )
 
                 return True
@@ -276,8 +282,8 @@ class SupabaseManager:
 
             return True
         except Exception as e:
-            print(
-                f"[ERRO] Erro ao incrementar estatística {stat_type} para produto {product_id}: {e}"
+            logger.error(
+                f"[Supabase] Erro ao incrementar {stat_type} para produto {product_id}: {e}"
             )
             return False
 
@@ -303,7 +309,7 @@ class SupabaseManager:
                 }
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar estatísticas diárias: {e}")
+            logger.error(f"[Supabase] Erro ao buscar estatísticas diárias: {e}")
             return {}
 
     # ==================== MÉTODOS UTILITÁRIOS ====================
@@ -321,35 +327,26 @@ class SupabaseManager:
                 .execute()
             )
 
-            deleted_count = len(response.data) if response.data else 0
-            print(f"🧹 {deleted_count} produtos antigos removidos")
+            logger.info(f"[Supabase] {deleted_count} produtos antigos removidos")
             return deleted_count
 
         except Exception as e:
-            print(f"[ERRO] Erro ao limpar produtos antigos: {e}")
+            logger.error(f"[Supabase] Erro ao limpar produtos antigos: {e}")
             return 0
 
     async def get_system_summary(self) -> Dict[str, Any]:
-        """Retorna resumo do sistema"""
+        """Retorna resumo do sistema otimizado"""
         try:
-            # Conta produtos por loja
-            stores_response = (
-                self.client.table("products")
-                .select("store, count")
-                .eq("is_active", True)
-                .group("store")
-                .execute()
-            )
-
-            # Total de produtos
+            # 1. Busca total de produtos ativos
             total_response = (
                 self.client.table("products")
                 .select("count", count="exact")
                 .eq("is_active", True)
                 .execute()
             )
+            total_active = total_response.count if total_response.count is not None else 0
 
-            # Produtos com desconto
+            # 2. Busca produtos com desconto
             discount_response = (
                 self.client.table("products")
                 .select("count", count="exact")
@@ -357,19 +354,37 @@ class SupabaseManager:
                 .eq("is_active", True)
                 .execute()
             )
+            discount_count = discount_response.count if discount_response.count is not None else 0
+
+            # 3. Busca envios Telegram (Soma de telegram_send_count em product_stats)
+            telegram_response = (
+                self.client.rpc("get_total_telegram_sends")
+                .execute()
+            )
+            telegram_sends = telegram_response.data if telegram_response.data else 0
+
+            # 4. Busca distribuição por loja (Usa RPC se possível para ser rápido)
+            stores_response = self.client.rpc("get_store_distribution").execute()
+            store_counts = {item['store']: item['count'] for item in stores_response.data} if stores_response.data else {}
 
             return {
-                "total_products": total_response.count,
-                "products_with_discount": discount_response.count,
-                "stores": {
-                    item["store"]: item["count"] for item in stores_response.data
-                },
+                "total_products": total_active,
+                "products_with_discount": discount_count,
+                "telegram_sends": telegram_sends,
+                "stores": store_counts,
                 "updated_at": datetime.now().isoformat(),
             }
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar resumo: {e}")
-            return {}
+            logger.error(f"[Supabase] Erro ao buscar resumo: {e}")
+            # Fallback leve
+            return {
+                "total_products": 0,
+                "products_with_discount": 0,
+                "telegram_sends": 0,
+                "stores": {},
+                "updated_at": datetime.now().isoformat(),
+            }
 
     # ==================== MÉTODOS PARA LOJAS ====================
 
@@ -387,7 +402,7 @@ class SupabaseManager:
             return response.data if response.data else []
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar lojas ativas: {e}")
+            logger.error(f"[Supabase] Erro ao buscar lojas ativas: {e}")
             return []
 
     async def get_store_by_name(self, store_name: str) -> Optional[Dict[str, Any]]:
@@ -405,31 +420,37 @@ class SupabaseManager:
             return response.data[0] if response.data else None
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar loja {store_name}: {e}")
+            logger.error(f"[Supabase] Erro ao buscar loja {store_name}: {e}")
             return None
 
     async def get_stores_with_product_count(self) -> List[Dict[str, Any]]:
-        """Retorna lojas com contagem de produtos ativos"""
+        """Retorna lojas com contagem de produtos ativos — query única (sem N+1)."""
         try:
-            # Busca lojas
             stores = await self.get_active_stores()
+            if not stores:
+                return []
 
-            # Para cada loja, conta produtos
+            # Busca contagem de todos os produtos agrupados por store em uma única query
+            all_counts_response = (
+                self.client.table("products")
+                .select("store")
+                .eq("is_active", True)
+                .execute()
+            )
+
+            # Conta em Python (evita N+1 queries ao banco)
+            counts: dict = {}
+            for row in (all_counts_response.data or []):
+                store_name = row.get("store", "")
+                counts[store_name] = counts.get(store_name, 0) + 1
+
             for store in stores:
-                response = (
-                    self.client.table("products")
-                    .select("id", count="exact")
-                    .eq("store", store["name"])
-                    .eq("is_active", True)
-                    .execute()
-                )
-
-                store["product_count"] = response.count or 0
+                store["product_count"] = counts.get(store["name"], 0)
 
             return stores
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar lojas com contagem: {e}")
+            logger.error(f"[Supabase] Erro ao buscar lojas com contagem: {e}")
             return []
 
     # ==================== MÉTODOS PARA PREFERÊNCIAS DE USUÁRIO ====================
@@ -448,7 +469,7 @@ class SupabaseManager:
             return {"has_preferences": False}
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar preferências do usuário: {e}")
+            logger.error(f"[Supabase] Erro ao buscar preferências do usuário: {e}")
             return {"has_preferences": False}
 
     async def save_user_preference(
@@ -479,7 +500,7 @@ class SupabaseManager:
             return True
 
         except Exception as e:
-            print(f"[ERRO] Erro ao salvar preferências: {e}")
+            logger.error(f"[Supabase] Erro ao salvar preferências: {e}")
             return False
 
     async def get_recommended_products(
@@ -495,7 +516,7 @@ class SupabaseManager:
             return response.data if response.data else []
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar recomendações: {e}")
+            logger.error(f"[Supabase] Erro ao buscar recomendações: {e}")
             return []
 
     # ==================== MÉTODOS DE BUSCA AVANÇADA ====================
@@ -541,7 +562,7 @@ class SupabaseManager:
             return response.data if response.data else []
 
         except Exception as e:
-            print(f"[ERRO] Erro na busca full-text: {e}")
+            logger.error(f"[Supabase] Erro na busca full-text: {e}")
             return []
 
     async def get_top_deals(
@@ -569,7 +590,7 @@ class SupabaseManager:
             return response.data if response.data else []
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar top deals: {e}")
+            logger.error(f"[Supabase] Erro ao buscar top deals: {e}")
             return []
 
     async def get_categories(self, store: Optional[str] = None) -> List[str]:
@@ -596,7 +617,7 @@ class SupabaseManager:
             return categories
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar categorias: {e}")
+            logger.error(f"[Supabase] Erro ao buscar categorias: {e}")
             return []
 
     async def get_products_for_telegram(
@@ -621,7 +642,7 @@ class SupabaseManager:
             response = response.limit(200).execute()
 
             if not response.data:
-                print("[WARN] Nenhum produto encontrado para Telegram")
+                logger.warning("[Supabase] Nenhum produto encontrado para Telegram")
                 return []
 
             # Processar e ordenar em Python com datetime real
@@ -650,27 +671,24 @@ class SupabaseManager:
                 )
             )
 
-            # Debug logging (primeiros 10)
-            print(f"\n[DEBUG] Top 10 produtos ordenados para Telegram:")
+            logger.debug("[Supabase] Top 10 produtos selecionados para Telegram:")
             for idx, p in enumerate(products[:10], 1):
                 last_sent_str = (
                     p["last_sent_dt"].strftime("%Y-%m-%d %H:%M")
                     if p["last_sent_dt"].year > 1970
                     else "NUNCA"
                 )
-                print(
+                logger.debug(
                     f"  {idx}. ID:{p.get('id')} | Sent:{last_sent_str} | Count:{p.get('send_count', 0)} | Discount:{p.get('discount_percentage', 0)}%"
                 )
 
             selected = products[:limit]
-            print(
-                f"\n[INFO] Selecionados {len(selected)} produtos para envio no Telegram\n"
-            )
+            logger.info(f"[Supabase] Selecionados {len(selected)} produtos para Telegram")
 
             return selected
 
         except Exception as e:
-            print(f"[ERRO] Erro ao buscar produtos para Telegram: {e}")
+            logger.error(f"[Supabase] Erro ao buscar produtos para Telegram: {e}")
             # Fallback: retorna produtos recentes com imagem
             try:
                 response = (
@@ -683,7 +701,7 @@ class SupabaseManager:
                     .execute()
                 )
                 return response.data if response.data else []
-            except:
+            except Exception:
                 return []
 
 

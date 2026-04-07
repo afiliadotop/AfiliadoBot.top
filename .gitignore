@@ -44,6 +44,42 @@ secrets.json
 credentials.json
 service_account.json
 
+# =====================================================
+# 🔑 SSH KEYS & CERTIFICATES (NUNCA ao Git!)
+# =====================================================
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+ssh-key-*
+
+# Sessões Telethon (contém dados de login)
+*.session
+*.session-journal
+
+# =====================================================
+# ☁️ Oracle Cloud / Infra (OCID sensíveis)
+# =====================================================
+oracle_crawler.py
+imagens_oracle.json
+imagens_oracle_utf8.json
+
+# =====================================================
+# 📄 API Docs com dados sensíveis / grandes demais
+# =====================================================
+Api_Awin.md
+apicj.md
+
+# =====================================================
+# 🗑️ Scripts temporários de debugging
+# =====================================================
+tmp_*.py
+exchange_ml_code.py
+quick_ml_token.py
+test_connection.py
+
 # Security - Configuration Scripts (may contain tokens/secrets)
 **/configure-*.ps1
 **/configure-*.sh
@@ -90,4 +126,11 @@ playwright/.cache/
 # Deploy
 # =====================================================
 .render/
+
+# =====================================================
+# 📦 Dados locais / Exploração (não vão ao Git)
+# =====================================================
+tmp/
+ml_callback.html
+metadata.json
 
