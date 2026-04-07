@@ -41,7 +41,7 @@ export const TelegramSettings = () => {
     const handleRefreshCache = async () => {
         setRefreshing(true);
         try {
-            await api.post('/telegram/settings/refresh');
+            await api.post('/telegram/settings/refresh', {});
             toast.success('Cache atualizado!');
             fetchSettings();
             fetchStatus();

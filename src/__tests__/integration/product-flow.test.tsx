@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter } from 'react-router-dom';
-import { Products } from '../../../components/dashboard/Products';
+import { MemoryRouter } from 'react-router-dom';
+import { Products } from '../../components/dashboard/Products';
 
 // Mock API
-vi.mock('../../../services/api', () => ({
+vi.mock('../../services/api', () => ({
     api: {
         get: vi.fn(),
         post: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('../../../services/api', () => ({
     }
 }));
 
-import { api } from '../../../services/api';
+import { api } from '../../services/api';
 
 /**
  * Integration Test: Product Management Flow
@@ -55,9 +55,9 @@ describe('Product Management Flow Integration', () => {
         (api.get as any).mockResolvedValue(mockProducts);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Should show loading initially
@@ -80,9 +80,9 @@ describe('Product Management Flow Integration', () => {
         (api.get as any).mockResolvedValue([]);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         await waitFor(() => {
@@ -138,9 +138,9 @@ describe('Product Management Flow Integration', () => {
         (api.get as any).mockResolvedValue(mockProducts);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Wait for products to load
@@ -190,9 +190,9 @@ describe('Product Management Flow Integration', () => {
         vi.spyOn(window, 'confirm').mockReturnValue(true);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Wait for products to load
@@ -222,9 +222,9 @@ describe('Product Management Flow Integration', () => {
         (api.get as any).mockResolvedValue(mockProducts);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Wait for products to load
@@ -248,9 +248,9 @@ describe('Product Management Flow Integration', () => {
         (api.get as any).mockResolvedValue([]);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Products />
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         await waitFor(() => {

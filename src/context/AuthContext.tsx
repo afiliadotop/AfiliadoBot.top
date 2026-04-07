@@ -7,6 +7,7 @@ interface User {
     name: string;
     email: string;
     role: string;
+    subscription_status?: string;
 }
 
 interface AuthContextType {

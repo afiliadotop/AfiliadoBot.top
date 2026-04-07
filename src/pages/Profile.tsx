@@ -19,7 +19,7 @@ export const Profile = () => {
     const loadProfile = async () => {
         setIsLoading(true);
         try {
-            const data = await api.get(`/api/users/profile`);
+            const data = await api.get<any>(`/api/users/profile`);
             if (data) {
                 setProfile(data);
                 setName(data.name || user?.name || "");

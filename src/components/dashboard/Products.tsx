@@ -31,7 +31,7 @@ export const Products = () => {
         );
     });
 
-    const handleDelete = async (id: number, name: string) => {
+    const handleDelete = async (id: string | number, name: string) => {
         if (confirm(`Tem certeza que deseja deletar "${name}"?`)) {
             await deleteProduct(id);
         }

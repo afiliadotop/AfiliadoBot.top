@@ -53,7 +53,7 @@ export const ShopeeFeeds = () => {
     const handleRunFeed = async (feedId: string) => {
         setRunningId(feedId);
         try {
-            await api.post(`/feeds/${feedId}/run`);
+            await api.post(`/feeds/${feedId}/run`, {});
             // Optimistic update
             setFeeds(prev => prev.map(f =>
                 f.id === feedId ? { ...f, status: 'running' } : f

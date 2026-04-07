@@ -1,5 +1,5 @@
 import React from 'react';
-import { ProductFilters } from '../services/shopee.service';
+import { ProductFilters } from '../../services/shopee.service';
 import { X, Filter } from 'lucide-react';
 
 interface AdvancedFiltersProps {

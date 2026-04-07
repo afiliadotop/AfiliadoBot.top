@@ -1,21 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from '../../../context/AuthContext';
-import { LandingPage } from '../../../pages/LandingPage';
-import { Login } from '../../../pages/Login';
-import { Products } from '../../../components/dashboard/Products';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from '../../context/AuthContext';
+import { LandingPage } from '../../pages/LandingPage';
+import { Login } from '../../pages/Login';
+import { Products } from '../../components/dashboard/Products';
 
 // Mock API
-vi.mock('../../../services/api', () => ({
+vi.mock('../../services/api', () => ({
     api: {
         get: vi.fn(),
         post: vi.fn(),
     }
 }));
 
-import { api } from '../../../services/api';
+import { api } from '../../services/api';
 
 /**
  * Integration Test: Navigation Flow
@@ -31,12 +31,12 @@ describe('Navigation Flow Integration', () => {
         const user = userEvent.setup();
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <Routes>
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<Login />} />
                 </Routes>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Should be on landing page
@@ -54,14 +54,14 @@ describe('Navigation Flow Integration', () => {
 
     it('should protect dashboard routes when not authenticated', async () => {
         render(
-            <BrowserRouter initialEntries={['/dashboard/products']}>
+            <MemoryRouter initialEntries={['/dashboard/products']}>
                 <AuthProvider>
                     <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route path="/dashboard/products" element={<Products />} />
                     </Routes>
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Should redirect to login or show login page
@@ -86,13 +86,13 @@ describe('Navigation Flow Integration', () => {
         (api.get as any).mockResolvedValue([]);
 
         render(
-            <BrowserRouter initialEntries={['/dashboard/products']}>
+            <MemoryRouter initialEntries={['/dashboard/products']}>
                 <AuthProvider>
                     <Routes>
                         <Route path="/dashboard/products" element={<Products />} />
                     </Routes>
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Should render dashboard

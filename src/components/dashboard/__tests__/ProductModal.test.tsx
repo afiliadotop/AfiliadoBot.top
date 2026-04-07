@@ -31,8 +31,12 @@ describe('ProductModal Component', () => {
             id: 1,
             name: 'Produto Teste',
             store: 'shopee',
-            affiliate_url: 'https://example.com',
+            affiliate_link: 'https://example.com',
             current_price: 99.90,
+            is_active: true,
+            is_featured: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
         };
 
         render(<ProductModal {...defaultProps} product={product} />);

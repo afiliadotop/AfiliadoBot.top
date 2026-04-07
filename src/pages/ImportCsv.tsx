@@ -34,11 +34,7 @@ const ImportCsv = () => {
         try {
             toast.info('Iniciando upload... Isso pode levar alguns minutos.');
 
-            await api.post('/import/csv', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
+            await api.post('/import/csv', formData);
 
             toast.success('Importação iniciada em segundo plano! Você será notificado quando terminar.');
             setFile(null);

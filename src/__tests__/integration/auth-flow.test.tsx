@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
-import { AuthProvider } from '../../../context/AuthContext';
-import { Login } from '../../../pages/Login';
-import App from '../../../App';
+import { MemoryRouter } from 'react-router-dom';
+import { AuthProvider } from '../../context/AuthContext';
+import { Login } from '../../pages/Login';
+import App from '../../App';
 
 // Mock API
-vi.mock('../../../services/api', () => ({
+vi.mock('../../services/api', () => ({
     api: {
         post: vi.fn(),
         get: vi.fn(),
     }
 }));
 
-import { api } from '../../../services/api';
+import { api } from '../../services/api';
 
 /**
  * Integration Test: Authentication Flow
@@ -49,11 +49,11 @@ describe('Authentication Flow Integration', () => {
 
         // Render app with routing
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <AuthProvider>
                     <Login />
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Find and fill login form
@@ -83,11 +83,11 @@ describe('Authentication Flow Integration', () => {
         (api.post as any).mockResolvedValue(null);
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <AuthProvider>
                     <Login />
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         const emailInput = screen.getByLabelText(/email/i);
@@ -115,11 +115,11 @@ describe('Authentication Flow Integration', () => {
         }));
 
         const { rerender } = render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <AuthProvider>
                     <div data-testid="test-component">Test</div>
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // User should be logged in initially
@@ -130,11 +130,11 @@ describe('Authentication Flow Integration', () => {
         localStorage.removeItem('afiliadobot_user');
 
         rerender(
-            <BrowserRouter>
+            <MemoryRouter>
                 <AuthProvider>
                     <div data-testid="test-component">Test</div>
                 </AuthProvider>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Verify data was cleared

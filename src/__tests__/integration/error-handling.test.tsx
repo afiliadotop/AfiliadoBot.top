@@ -1,17 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
-import { ErrorBoundary } from '../../../components/ErrorBoundary';
-import { Products } from '../../../components/dashboard/Products';
+import { MemoryRouter } from 'react-router-dom';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
+import { Products } from '../../components/dashboard/Products';
 
 // Mock API to throw errors
-vi.mock('../../../services/api', () => ({
+vi.mock('../../services/api', () => ({
     api: {
         get: vi.fn(),
     }
 }));
 
-import { api } from '../../../services/api';
+import { api } from '../../services/api';
 
 /**
  * Integration Test: Error Handling Flow
@@ -51,11 +51,11 @@ describe('Error Handling Flow Integration', () => {
         (api.get as any).mockRejectedValue(new Error('Network error'));
 
         render(
-            <BrowserRouter>
+            <MemoryRouter>
                 <ErrorBoundary>
                     <Products />
                 </ErrorBoundary>
-            </BrowserRouter>
+            </MemoryRouter>
         );
 
         // Component should handle error without crashing

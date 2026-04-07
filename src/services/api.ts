@@ -69,12 +69,20 @@ export const api = {
         }
     },
 
-    post: async <T, B = unknown>(endpoint: string, body: B): Promise<T | null> => {
+    post: async <T, B = unknown>(endpoint: string, body?: B, customHeaders?: HeadersInit): Promise<T | null> => {
         try {
+            const isFormData = body instanceof FormData;
+            const headers = { ...getHeaders(), ...customHeaders };
+            
+            // If it's FormData, let the browser set the boundary and Content-Type
+            if (isFormData) {
+                delete (headers as any)['Content-Type'];
+            }
+
             const res = await fetch(`${BASE_URL}${endpoint}`, {
                 method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify(body)
+                headers,
+                body: isFormData ? (body as any) : JSON.stringify(body || {})
             });
 
             if (!res.ok) {
@@ -108,7 +116,7 @@ export const api = {
         }
     },
 
-    put: async <T, B = unknown>(endpoint: string, body: B): Promise<T | null> => {
+    put: async <T, B = unknown>(endpoint: string, body?: B): Promise<T | null> => {
         try {
             const res = await fetch(`${BASE_URL}${endpoint}`, {
                 method: 'PUT',
