@@ -15,6 +15,8 @@ Routes:
 import logging
 import os
 from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..utils.cj_client import CJAffiliateClient, CJAPIError
 from ..services.commission_radar_service import CommissionRadarService
