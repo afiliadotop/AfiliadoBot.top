@@ -67,13 +67,15 @@ class TelegramBot:
             # Configura menu de comandos (SEO)
             await self.set_bot_commands()
 
+            # Inicializa a aplicação (Obrigatório para Webhook ou Polling via v20+)
+            await self.application.initialize()
+
             # Inicia polling locamente se não estiver configurado para webhook
             render_url = os.getenv("RENDER_EXTERNAL_URL")
             if not render_url:
                 logger.info("[TELEGRAM] Iniciando polling para recepção de comandos locais...")
-                await self.application.initialize()
                 await self.application.start()
-                if self.application.updater:
+                if getattr(self.application, "updater", None):
                     await self.application.updater.start_polling()
                 else:
                     logger.warning("[TELEGRAM] Sem updater disponível na application.")
