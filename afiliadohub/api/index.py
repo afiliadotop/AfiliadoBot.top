@@ -125,8 +125,9 @@ _prod_origins = [
 # Adicionar o domínio Vercel default caso não esteja na lista de origens
 _vercel_origins = [
     "https://afiliadobot.top",
+    "https://www.afiliadobot.top",
     "https://afiliado-bot-top.vercel.app",
-    "https://afiliadoBot.top",
+    "https://afiliado-bot-top-arteemvencer-1020s-projects.vercel.app",
 ]
 _dev_origins = [
     "http://localhost:3000",
