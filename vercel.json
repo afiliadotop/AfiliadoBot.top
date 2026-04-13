@@ -6,7 +6,7 @@
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "https://afiliadobot.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

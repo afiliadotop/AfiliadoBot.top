@@ -122,13 +122,21 @@ _prod_origins = [
     for o in os.getenv("ALLOWED_ORIGINS", "https://afiliadobot.top").split(",")
     if o.strip()
 ]
+# Adicionar o domínio Vercel default caso não esteja na lista de origens
+_vercel_origins = [
+    "https://afiliadobot.top",
+    "https://afiliado-bot-top.vercel.app",
+    "https://afiliadoBot.top",
+]
 _dev_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-ALLOWED_ORIGINS = _dev_origins + _prod_origins if _env == "development" else _prod_origins
+# Merge: prod + vercel + dev (sem duplicatas)
+_all_prod = list(dict.fromkeys(_prod_origins + _vercel_origins))
+ALLOWED_ORIGINS = _dev_origins + _all_prod if _env == "development" else _all_prod
 
 app.add_middleware(
     CORSMiddleware,

@@ -14,33 +14,33 @@ export const LiveBotFeed = () => {
             setDeals([
                 {
                     id: 'mock-1',
-                    name: 'Fritadeira Air Fryer Mondial 4L Family - Painel Inox AF-14',
+                    name: 'Fritadeira Air Fryer Mondial 4L Family',
                     current_price: 269.90,
                     original_price: 549.90,
                     discount_percentage: 51,
-                    image_url: 'https://m.media-amazon.com/images/I/71u9D99JsyL._AC_SX679_.jpg',
+                    image_url: 'https://placehold.co/600x600/orange/white?text=Shopee+Deal',
                     affiliate_link: '#',
                     store: 'amazon',
                     sales_count: 8520
                 },
                 {
                     id: 'mock-2',
-                    name: 'Smartphone Samsung Galaxy S23 Ultra 5G 256GB Tela 6.8"',
+                    name: 'Smartphone Samsung Galaxy S23 Ultra',
                     current_price: 4999.00,
                     original_price: 9499.00,
                     discount_percentage: 47,
-                    image_url: 'https://m.media-amazon.com/images/I/71w1jY8tVKL._AC_SX679_.jpg',
+                    image_url: 'https://placehold.co/600x600/orange/white?text=Smartphone',
                     affiliate_link: '#',
                     store: 'shopee',
                     sales_count: 145
                 },
                 {
                     id: 'mock-3',
-                    name: 'Smart TV 55" UHD 4K Samsung 55CU7700, Processador Crystal 4K',
+                    name: 'Smart TV 55" UHD 4K Samsung',
                     current_price: 2199.00,
                     original_price: 3599.00,
                     discount_percentage: 39,
-                    image_url: 'https://m.media-amazon.com/images/I/71Zp+i6E2IL._AC_SX679_.jpg',
+                    image_url: 'https://placehold.co/600x600/orange/white?text=Smart+TV',
                     affiliate_link: '#',
                     store: 'amazon',
                     sales_count: 532
