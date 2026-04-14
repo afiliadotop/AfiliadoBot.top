@@ -36,12 +36,15 @@ export const Login = () => {
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
+                            <label htmlFor="login-email" className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
                             <div className="relative">
                                 <Mail className="absolute left-3 top-2.5 w-5 h-5 text-slate-500" />
                                 <input
+                                    id="login-email"
+                                    name="email"
                                     type="email"
                                     required
+                                    autoComplete="email"
                                     className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                     placeholder="seu@email.com"
                                     value={email}
@@ -51,12 +54,15 @@ export const Login = () => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-1.5">Senha</label>
+                            <label htmlFor="login-password" className="block text-sm font-medium text-slate-300 mb-1.5">Senha</label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-2.5 w-5 h-5 text-slate-500" />
                                 <input
+                                    id="login-password"
+                                    name="password"
                                     type={showPassword ? "text" : "password"}
                                     required
+                                    autoComplete="current-password"
                                     className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-10 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                     placeholder="••••••••"
                                     value={password}
@@ -64,6 +70,7 @@ export const Login = () => {
                                 />
                                 <button
                                     type="button"
+                                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                                     onClick={() => setShowPassword(!showPassword)}
                                     className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition-colors"
                                 >
