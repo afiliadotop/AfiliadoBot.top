@@ -1,40 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { searchMLProducts, getTrendingMLProducts, MLProduct } from '../services/mercadolivre.service';
 import { PageTransition } from '../components/layout/PageTransition';
 import {
     Search, Loader2, AlertCircle, ShoppingCart, ExternalLink,
-    Send, Star, Package, Truck, ChevronDown, RefreshCw,
-    TrendingUp, Filter, ArrowUpDown, Tag, X
+    Send, Package, Truck, ChevronDown, RefreshCw,
+    TrendingUp, Filter, X
 } from 'lucide-react';
-
-// ==================== TYPES ====================
-
-interface MLProduct {
-    id: string;
-    name: string;
-    price: number;
-    original_price?: number;
-    discount_percentage: number;
-    image_url: string;
-    seller_name: string;
-    condition: 'new' | 'used' | 'not_specified';
-    shipping_free: boolean;
-    permalink: string;
-    affiliate_link: string;
-    sold_quantity?: number;
-    store: string;
-}
-
-interface SearchResponse {
-    products: MLProduct[];
-    count: number;
-    total: number;
-    page: number;
-    has_more: boolean;
-    filters: Record<string, string>;
-}
 
 // ==================== PRODUCT CARD ====================
 
@@ -47,22 +20,17 @@ const MLProductCard = ({ product, onSendTelegram, sending }: {
 
     return (
         <article className="group relative bg-[#1c1c1e] border border-[#2a2a2d] rounded-2xl overflow-hidden flex flex-col hover:border-[#FFE600]/40 hover:shadow-xl hover:shadow-[#FFE600]/5 transition-all duration-300">
-            {/* Badge desconto */}
             {product.discount_percentage >= 5 && (
-                <div className="absolute top-3 left-3 z-10 bg-[#FFE600] text-black text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                <div className="absolute top-3 left-3 z-10 bg-[#FFE600] text-black text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
                     -{product.discount_percentage}%
                 </div>
             )}
-
-            {/* Frete grátis */}
             {product.shipping_free && (
                 <div className="absolute top-3 right-3 z-10 bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Truck className="w-2.5 h-2.5" />
-                    GRÁTIS
+                    <Truck className="w-2.5 h-2.5" /> GRÁTIS
                 </div>
             )}
 
-            {/* Imagem */}
             <div className="relative bg-white aspect-square overflow-hidden">
                 {imgError ? (
                     <div className="w-full h-full flex items-center justify-center bg-[#2a2a2d]">
@@ -79,24 +47,21 @@ const MLProductCard = ({ product, onSendTelegram, sending }: {
                 )}
             </div>
 
-            {/* Conteúdo */}
             <div className="flex flex-col gap-2 p-3 flex-1">
                 <p className="text-xs text-slate-500 font-mono uppercase truncate">
                     🏪 {product.seller_name}
                 </p>
-
                 <h3 className="text-sm text-slate-200 font-medium leading-snug line-clamp-2 flex-1">
                     {product.name}
                 </h3>
 
-                {product.sold_quantity && product.sold_quantity > 0 ? (
+                {product.sold_quantity && product.sold_quantity > 100 ? (
                     <p className="text-[10px] text-slate-500 flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
                         {product.sold_quantity.toLocaleString('pt-BR')} vendidos
                     </p>
                 ) : null}
 
-                {/* Preços */}
                 <div className="mt-auto">
                     {product.original_price && product.original_price > product.price && (
                         <p className="text-xs text-slate-500 line-through">
@@ -107,13 +72,12 @@ const MLProductCard = ({ product, onSendTelegram, sending }: {
                         R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                     {product.condition === 'used' && (
-                        <span className="text-[9px] text-amber-500/80 font-mono uppercase bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[9px] text-amber-500/80 font-mono bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">
                             USADO
                         </span>
                     )}
                 </div>
 
-                {/* Ações */}
                 <div className="flex gap-2 mt-2">
                     <a
                         href={product.affiliate_link}
@@ -157,7 +121,6 @@ const ProductSkeleton = () => (
 
 export const MercadoLivreProducts = () => {
     const { user } = useAuth();
-    const navigate = useNavigate();
 
     const [products, setProducts] = useState<MLProduct[]>([]);
     const [loading, setLoading] = useState(false);
@@ -181,16 +144,14 @@ export const MercadoLivreProducts = () => {
         setTimeout(() => setToast(null), 3500);
     };
 
-    const fetchProducts = useCallback(async (kw: string, s: string, c: string, p: number, append = false) => {
+    const fetchProducts = useCallback(async (kw: string, s: typeof sort, c: typeof condition, p: number, append = false) => {
         if (!kw.trim()) return;
         if (append) setLoadingMore(true);
         else { setLoading(true); setError(null); }
 
         try {
-            const res = await api.get<SearchResponse>(
-                `/mercadolivre/search?keyword=${encodeURIComponent(kw)}&sort=${s}&condition=${c}&page=${p}&limit=20`
-            );
-            if (!res) throw new Error('Sem resposta da API');
+            // Chama ML API diretamente do browser (evita bloqueio 403 em IPs de servidores)
+            const res = await searchMLProducts(kw, { sort: s, condition: c, page: p, limit: 20 });
             if (append) setProducts(prev => [...prev, ...res.products]);
             else setProducts(res.products);
             setHasMore(res.has_more);
@@ -221,9 +182,7 @@ export const MercadoLivreProducts = () => {
         if (keyword) fetchProducts(keyword, sort, condition, 1, false);
     }, [sort, condition]);
 
-    const handleLoadMore = () => {
-        fetchProducts(keyword, sort, condition, page + 1, true);
-    };
+    const handleLoadMore = () => { fetchProducts(keyword, sort, condition, page + 1, true); };
 
     const handleSendTelegram = async (product: MLProduct) => {
         setSendingId(product.id);
@@ -240,8 +199,8 @@ export const MercadoLivreProducts = () => {
                 shipping_free: product.shipping_free,
                 condition: product.condition,
             });
-            showToast('✅ Enviado ao Telegram com sucesso!');
-        } catch (err: any) {
+            showToast('✅ Enviado ao Telegram!');
+        } catch {
             showToast('❌ Erro ao enviar ao Telegram', 'err');
         } finally {
             setSendingId(null);
@@ -253,10 +212,8 @@ export const MercadoLivreProducts = () => {
             <div className="min-h-screen bg-[#111113] pb-16">
                 {/* Toast */}
                 {toast && (
-                    <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-2xl transition-all ${
-                        toast.type === 'ok'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-red-600 text-white'
+                    <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-2xl ${
+                        toast.type === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
                     }`}>
                         {toast.msg}
                     </div>
@@ -269,15 +226,12 @@ export const MercadoLivreProducts = () => {
                             <div className="w-10 h-10 bg-[#FFE600] rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/20">
                                 <ShoppingCart className="w-5 h-5 text-black" />
                             </div>
-                            <h1 className="text-3xl font-black text-white tracking-tight">
-                                Mercado Livre
-                            </h1>
+                            <h1 className="text-3xl font-black text-white tracking-tight">Mercado Livre</h1>
                         </div>
                         <p className="text-slate-400 text-sm mb-8">
                             Busque produtos com links de afiliado gerados automaticamente
                         </p>
 
-                        {/* Barra de busca */}
                         <div className="relative max-w-2xl mx-auto">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
                             <input
@@ -306,7 +260,6 @@ export const MercadoLivreProducts = () => {
                             )}
                         </div>
 
-                        {/* Quick searches */}
                         <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
                             <span className="text-[10px] text-slate-600 uppercase tracking-wider font-mono">Tendências:</span>
                             {QUICK_SEARCHES.map(q => (
@@ -326,11 +279,10 @@ export const MercadoLivreProducts = () => {
                 <div className="sticky top-0 z-20 bg-[#111113]/95 backdrop-blur border-b border-[#2a2a2d] px-6 py-3">
                     <div className="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
                         <Filter className="w-4 h-4 text-slate-500 flex-shrink-0" />
-
                         <select
                             id="ml-sort"
                             value={sort}
-                            onChange={e => setSort(e.target.value as any)}
+                            onChange={e => setSort(e.target.value as typeof sort)}
                             className="bg-[#1c1c1e] border border-[#2a2a2d] text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-[#FFE600]/40 cursor-pointer"
                         >
                             <option value="relevance">Relevância</option>
@@ -338,22 +290,20 @@ export const MercadoLivreProducts = () => {
                             <option value="price_desc">Maior Preço</option>
                             <option value="sales">Mais Vendidos</option>
                         </select>
-
                         <select
                             id="ml-condition"
                             value={condition}
-                            onChange={e => setCondition(e.target.value as any)}
+                            onChange={e => setCondition(e.target.value as typeof condition)}
                             className="bg-[#1c1c1e] border border-[#2a2a2d] text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-[#FFE600]/40 cursor-pointer"
                         >
                             <option value="new">Somente Novos</option>
                             <option value="used">Somente Usados</option>
                             <option value="not_specified">Todos</option>
                         </select>
-
                         {keyword && !loading && (
                             <span className="ml-auto text-xs text-slate-500 font-mono">
                                 {total > 0 ? (
-                                    <><span className="text-[#FFE600] font-bold">{products.length}</span> de {total.toLocaleString('pt-BR')} produtos</>
+                                    <><span className="text-[#FFE600] font-bold">{products.length}</span> de {total.toLocaleString('pt-BR')} resultados</>
                                 ) : 'Nenhum resultado'}
                             </span>
                         )}
@@ -362,7 +312,6 @@ export const MercadoLivreProducts = () => {
 
                 {/* Conteúdo */}
                 <div className="max-w-7xl mx-auto px-4 py-6">
-                    {/* Estado inicial */}
                     {!keyword && !loading && (
                         <div className="flex flex-col items-center justify-center py-32 text-center">
                             <div className="w-20 h-20 bg-[#1c1c1e] rounded-3xl flex items-center justify-center mb-6 shadow-xl">
@@ -375,7 +324,6 @@ export const MercadoLivreProducts = () => {
                         </div>
                     )}
 
-                    {/* Erro */}
                     {error && (
                         <div className="flex items-center gap-3 bg-red-950/30 border border-red-500/30 rounded-2xl p-5 mb-6">
                             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
@@ -392,16 +340,12 @@ export const MercadoLivreProducts = () => {
                         </div>
                     )}
 
-                    {/* Skeleton loading */}
                     {loading && (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-                            {Array.from({ length: 10 }).map((_, i) => (
-                                <ProductSkeleton key={i} />
-                            ))}
+                            {Array.from({ length: 10 }).map((_, i) => <ProductSkeleton key={i} />)}
                         </div>
                     )}
 
-                    {/* Grid de produtos */}
                     {!loading && products.length > 0 && (
                         <>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -414,8 +358,6 @@ export const MercadoLivreProducts = () => {
                                     />
                                 ))}
                             </div>
-
-                            {/* Carregar mais */}
                             {hasMore && (
                                 <div className="flex justify-center mt-10">
                                     <button
@@ -426,7 +368,7 @@ export const MercadoLivreProducts = () => {
                                         {loadingMore ? (
                                             <><Loader2 className="w-4 h-4 animate-spin" /> Carregando...</>
                                         ) : (
-                                            <><ChevronDown className="w-4 h-4" /> Carregar mais produtos</>
+                                            <><ChevronDown className="w-4 h-4" /> Carregar mais</>
                                         )}
                                     </button>
                                 </div>
@@ -434,12 +376,11 @@ export const MercadoLivreProducts = () => {
                         </>
                     )}
 
-                    {/* Empty state com busca ativa */}
                     {!loading && keyword && products.length === 0 && !error && (
                         <div className="flex flex-col items-center justify-center py-32 text-center">
                             <Package className="w-14 h-14 text-slate-700 mb-4" />
                             <h2 className="text-lg font-bold text-slate-400 mb-2">Nenhum produto encontrado</h2>
-                            <p className="text-slate-500 text-sm">Tente outro termo ou mude os filtros de busca</p>
+                            <p className="text-slate-500 text-sm">Tente outro termo ou mude os filtros</p>
                         </div>
                     )}
                 </div>
