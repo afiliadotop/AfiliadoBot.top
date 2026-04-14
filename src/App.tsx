@@ -35,6 +35,7 @@ const ShopeeFeeds = lazy(() => import('./pages/ShopeeFeeds').then(m => ({ defaul
 // Awin pages
 const AwinProducts = lazy(() => import('./pages/AwinProducts'));
 const CJProducts = lazy(() => import('./pages/CJProducts'));
+const MercadoLivreProducts = lazy(() => import('./pages/MercadoLivreProducts'));
 const VouchersCentral = lazy(() => import('./pages/VouchersCentral').then(m => ({ default: m.VouchersCentral })));
 
 // Settings pages
@@ -91,6 +92,7 @@ function App() {
                                         <Route path="shopee/feeds" element={<ShopeeFeeds />} />
                                         <Route path="awin" element={<AwinProducts />} />
                                         <Route path="cj" element={<CJProducts />} />
+                                        <Route path="ml" element={<MercadoLivreProducts />} />
                                         <Route path="analytics" element={<Analytics />} />
                                         <Route path="profile" element={<Profile />} />
                                     </Route>
