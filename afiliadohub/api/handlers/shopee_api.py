@@ -83,20 +83,6 @@ async def test_endpoint():
     return {"status": "ok", "message": "Shopee API working!", "cors": "enabled"}
 
 
-@router.get("/env-check")
-async def env_check():
-    """Diagnóstico: verifica se as variáveis de ambiente da Shopee estão configuradas no servidor"""
-    app_id = os.getenv("SHOPEE_APP_ID", "")
-    app_secret = os.getenv("SHOPEE_APP_SECRET", "")
-    endpoint = os.getenv("SHOPEE_API_ENDPOINT", "")
-    return {
-        "SHOPEE_APP_ID": {"set": bool(app_id), "preview": f"{app_id[:4]}...{app_id[-2:]}" if len(app_id) > 6 else "MISSING"},
-        "SHOPEE_APP_SECRET": {"set": bool(app_secret), "preview": f"{app_secret[:3]}...{app_secret[-3:]}" if len(app_secret) > 6 else "MISSING"},
-        "SHOPEE_API_ENDPOINT": {"set": bool(endpoint), "value": endpoint or "MISSING"},
-        "environment": os.getenv("ENVIRONMENT", "not set"),
-    }
-
-
 @router.get("/products", response_model=ProductsResponse)
 async def get_products(
     # Search & Sort
