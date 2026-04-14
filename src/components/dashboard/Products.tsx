@@ -95,23 +95,13 @@ export const Products = () => {
         setMlLoading(true);
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/api/products/add-ml-product', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    product_url: mlProductUrl,
-                    category: mlCategory
-                })
+            const data = await api.post<{ message?: string; detail?: string }>('/products/add-ml-product', {
+                product_url: mlProductUrl,
+                category: mlCategory
             });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Erro ao adicionar produto');
+            if (!data) {
+                throw new Error('Erro ao adicionar produto');
             }
 
             alert(data.message || 'Produto adicionado com sucesso!');

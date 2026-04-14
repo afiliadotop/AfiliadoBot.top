@@ -3,7 +3,7 @@
  * Client-side API service for analytics endpoints
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 
 export interface PerformanceOverview {
     total_products: number;

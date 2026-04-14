@@ -67,7 +67,7 @@ export const AwinOfferCard: React.FC<AwinOfferCardProps> = ({ offer }) => {
             };
 
             const token = localStorage.getItem('afiliadobot_token');
-            const res = await fetch(`http://localhost:8000/api/telegram/post-offer`, {
+            const res = await fetch(`/api/telegram/post-offer`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
