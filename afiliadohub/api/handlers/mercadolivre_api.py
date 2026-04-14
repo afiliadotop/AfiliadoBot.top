@@ -16,6 +16,15 @@ ML_USER_ID = os.getenv("ML_USER_ID", "")
 ML_BASE_URL = "https://api.mercadolibre.com"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
+# Headers que simulam um browser para evitar bloqueio 403 do ML
+ML_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    "Origin": "https://www.mercadolivre.com.br",
+    "Referer": "https://www.mercadolivre.com.br/",
+}
+
 
 # ==================== MODELS ====================
 
@@ -105,8 +114,11 @@ async def search_products(
             "q": keyword,
             "limit": limit,
             "offset": offset,
-            "condition": condition,
         }
+
+        # so adiciona condition se nao for 'not_specified' (evita rejeicao da API)
+        if condition and condition != "not_specified":
+            params["condition"] = condition
 
         sort_map = {
             "relevance": "relevance",
@@ -114,12 +126,26 @@ async def search_products(
             "price_desc": "price_desc",
             "sales": "sold_quantity",
         }
-        if sort in sort_map:
+        if sort in sort_map and sort != "relevance":
             params["sort"] = sort_map[sort]
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, headers=ML_HEADERS, follow_redirects=True) as client:
             response = await client.get(f"{ML_BASE_URL}/sites/MLB/search", params=params)
-            response.raise_for_status()
+
+            # Se 403, tenta sem condition (ML pode rejeitar com filtros)
+            if response.status_code == 403:
+                logger.warning(f"[ML API] 403 com params={params}, tentando sem condition...")
+                params.pop("condition", None)
+                response = await client.get(f"{ML_BASE_URL}/sites/MLB/search", params=params)
+
+            if not response.is_success:
+                body = response.text[:300]
+                logger.error(f"[ML API] Erro {response.status_code}: {body}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Erro na API do Mercado Livre: {response.status_code}"
+                )
+
             data = response.json()
 
         products = [build_product_dict(item) for item in data.get("results", [])]
