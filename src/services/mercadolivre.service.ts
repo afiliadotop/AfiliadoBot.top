@@ -1,22 +1,21 @@
 /**
- * Mercado Livre Service — Vercel Proxy
+ * Mercado Livre Service — Vercel Authenticated Proxy
  *
- * Arquitetura final:
- *   Browser → /ml-api/sites/MLB/search (same-origin, Vercel)
- *             ↓ Vercel rewrite proxy
- *             https://api.mercadolibre.com/sites/MLB/search
+ * Problema raiz (confirmado na doc oficial ML):
+ *   - ML bloqueia IPs de datacenter sem autenticação (403)
+ *   - ML bloqueia CORS de origens externas (403)
+ *   - Rewrite simples no Vercel não resolve: ainda recebe 403 sem Bearer token
  *
- * Por que Vercel proxy?
- *   - ML bloqueia CORS de origens externas (Origin: afiliadobot.top → 403)
- *   - ML bloqueia IPs de datacenters (Render/AWS → 403)
- *   - Vercel Edge Network não é bloqueado pelo ML
- *   - Same-origin: sem CORS, sem bloqueio de CSP
+ * Solução:
+ *   Vercel Serverless Function /api/ml-search que:
+ *   1. Recebe a query do browser (same-origin, sem CORS)
+ *   2. Adiciona Authorization: Bearer ML_ACCESS_TOKEN (env var no Vercel)
+ *   3. Chama api.mercadolibre.com autenticado → 200 OK
  *
- * Configurado em vercel.json:
- *   { "source": "/ml-api/:path*", "destination": "https://api.mercadolibre.com/:path*" }
+ * Referência doc ML: "Em toda chamada, enviar o access token em todas elas"
  */
 
-const ML_PROXY_BASE = '/ml-api';
+const ML_PROXY_URL = '/api/ml-search';
 const ML_AFFILIATE_TAG = 'TG-695d2ec34ff75f00019fb064-2307648221';
 
 export interface MLProduct {
@@ -54,7 +53,6 @@ function mapItem(item: any): MLProduct {
         ? Math.round(((original - price) / original) * 100)
         : 0;
 
-    // Imagem em alta resolução
     const image = (item.thumbnail ?? '').replace('-I.jpg', '-O.jpg');
 
     return {
@@ -91,7 +89,6 @@ export async function searchMLProducts(
         offset: String(offset),
     });
 
-    // Sort mapping
     const sortMap: Record<string, string> = {
         price_asc: 'price_asc',
         price_desc: 'price_desc',
@@ -99,18 +96,18 @@ export async function searchMLProducts(
     };
     if (sortMap[sort]) params.append('sort', sortMap[sort]);
 
-    // Condition (só adiciona se não for "todos")
     if (condition !== 'not_specified') {
         params.append('condition', condition);
     }
 
-    // Chama via Vercel proxy (/ml-api → api.mercadolibre.com)
-    // same-origin = sem CORS header, sem bloqueio de ML
-    const url = `${ML_PROXY_BASE}/sites/MLB/search?${params.toString()}`;
+    // Chama Vercel Function (same-origin, sem CORS)
+    // A Function adiciona o Bearer token para autenticar no ML
+    const url = `${ML_PROXY_URL}?${params.toString()}`;
     const response = await fetch(url);
 
     if (!response.ok) {
-        throw new Error(`ML API retornou ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error((errorData as any).error || `ML API retornou ${response.status}`);
     }
 
     const data = await response.json();
