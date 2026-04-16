@@ -1,16 +1,31 @@
 /**
- * Mercado Livre Public API Service
- * Chama a API pública do ML diretamente do browser (sem backend)
- * ML bloqueia IPs de servidores cloud, mas permite browsers via CORS
+ * Mercado Livre Service — Backend Proxy
+ *
+ * Arquitetura:
+ *   Antes: Frontend → ML API diretamente (bloqueado por CORS/403 do ML)
+ *   Agora:  Frontend → nosso backend (/api/mercadolivre/search) → ML API
+ *
+ * O ML bloqueia CORS de origens externas (Origin != *.mercadolivre.com.br).
+ * O backend usa client_credentials token para autenticar e resolver o 403.
  */
 
-const ML_API_URL = 'https://api.mercadolibre.com';
+const getBaseUrl = (): string => {
+    const url = import.meta.env.VITE_API_URL || '/api';
+    if (url.startsWith('http') && !url.endsWith('/api') && !url.includes('/api/')) {
+        return url.endsWith('/') ? `${url}api` : `${url}/api`;
+    }
+    return url;
+};
 
-// Headers que o browser envia automaticamente — API pública ML não requer auth
-const getHeaders = () => ({
-    'Accept': 'application/json',
-    'Accept-Language': 'pt-BR,pt;q=0.9',
-});
+const BASE_URL = getBaseUrl();
+
+const getAuthHeaders = (): HeadersInit => {
+    const token = localStorage.getItem('afiliadobot_token');
+    return {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+    };
+};
 
 export interface MLProduct {
     id: string;
@@ -35,39 +50,6 @@ export interface MLSearchResult {
     has_more: boolean;
 }
 
-const ML_AFFILIATE_TAG = 'TG-695d2ec34ff75f00019fb064-2307648221';
-
-function buildAffiliateLink(itemId: string): string {
-    const numericId = itemId.replace('MLB-', '').replace('MLB', '');
-    return `https://produto.mercadolivre.com.br/MLB-${numericId}?matt_tool=82322591&matt_word=${ML_AFFILIATE_TAG}`;
-}
-
-function mapItem(item: any): MLProduct {
-    const price = item.price ?? 0;
-    const original = item.original_price;
-    const discount = (original && original > price)
-        ? Math.round(((original - price) / original) * 100)
-        : 0;
-
-    // Imagem em alta resolução
-    const image = (item.thumbnail ?? '').replace('-I.jpg', '-O.jpg');
-
-    return {
-        id: item.id,
-        name: item.title,
-        price,
-        original_price: original ?? undefined,
-        discount_percentage: discount,
-        image_url: image,
-        seller_name: item.seller?.nickname ?? 'N/A',
-        condition: item.condition ?? 'new',
-        shipping_free: item.shipping?.free_shipping ?? false,
-        permalink: item.permalink ?? '',
-        affiliate_link: buildAffiliateLink(item.id),
-        sold_quantity: item.sold_quantity ?? undefined,
-    };
-}
-
 export async function searchMLProducts(
     keyword: string,
     options: {
@@ -78,63 +60,45 @@ export async function searchMLProducts(
     } = {}
 ): Promise<MLSearchResult> {
     const { sort = 'relevance', condition = 'new', page = 1, limit = 20 } = options;
-    const offset = (page - 1) * limit;
 
     const params = new URLSearchParams({
-        q: keyword,
+        keyword,
         limit: String(limit),
-        offset: String(offset),
+        page: String(page),
+        sort,
+        condition,
     });
 
-    // Mapeamento de sort para valores aceitos pela ML API
-    const sortMap: Record<string, string> = {
-        price_asc: 'price_asc',
-        price_desc: 'price_desc',
-        sales: 'sold_quantity',
-    };
-    if (sortMap[sort]) params.append('sort', sortMap[sort]);
-
-    // Condition (só adiciona se não for "todos")
-    if (condition !== 'not_specified') {
-        params.append('condition', condition);
-    }
-
-    const url = `${ML_API_URL}/sites/MLB/search?${params.toString()}`;
-
-    const response = await fetch(url, {
-        headers: getHeaders(),
-        mode: 'cors',
+    const response = await fetch(`${BASE_URL}/mercadolivre/search?${params.toString()}`, {
+        headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
-        throw new Error(`ML API retornou ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        const msg = (errorData as any).detail || `ML API retornou ${response.status}`;
+        throw new Error(msg);
     }
 
     const data = await response.json();
-    const products = (data.results ?? []).map(mapItem);
-    const total = data.paging?.total ?? 0;
 
     return {
-        products,
-        count: products.length,
-        total,
-        page,
-        has_more: offset + limit < total,
+        products: data.products ?? [],
+        count: data.count ?? 0,
+        total: data.total ?? 0,
+        page: data.page ?? page,
+        has_more: data.has_more ?? false,
     };
 }
 
 export async function getTrendingMLProducts(limit = 20): Promise<MLProduct[]> {
-    const params = new URLSearchParams({
-        limit: String(limit),
-        sort: 'sold_quantity',
-    });
-
-    const response = await fetch(
-        `${ML_API_URL}/sites/MLB/search?${params.toString()}`,
-        { headers: getHeaders(), mode: 'cors' }
-    );
-
-    if (!response.ok) return [];
-    const data = await response.json();
-    return (data.results ?? []).map(mapItem);
+    try {
+        const result = await searchMLProducts('ofertas do dia', {
+            sort: 'sales',
+            condition: 'new',
+            limit,
+        });
+        return result.products;
+    } catch {
+        return [];
+    }
 }

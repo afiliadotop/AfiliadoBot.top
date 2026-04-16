@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import logging
 import httpx
 import os
+import time
 import html as html_module
 
 from .auth import get_current_user, get_current_admin
@@ -12,9 +13,14 @@ router = APIRouter(prefix="/mercadolivre", tags=["mercadolivre"])
 logger = logging.getLogger(__name__)
 
 ML_AFFILIATE_TAG = os.getenv("ML_AFFILIATE_TAG", "")
+ML_APP_ID = os.getenv("ML_APP_ID", "")
+ML_SECRET_KEY = os.getenv("ML_SECRET_KEY", "")
 ML_USER_ID = os.getenv("ML_USER_ID", "")
 ML_BASE_URL = "https://api.mercadolibre.com"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+# Cache simples em memória para o app token (dura 6h)
+_app_token_cache: Dict[str, Any] = {"token": None, "expires_at": 0}
 
 # Headers que simulam um browser para evitar bloqueio 403 do ML
 ML_HEADERS = {
@@ -24,6 +30,47 @@ ML_HEADERS = {
     "Origin": "https://www.mercadolivre.com.br",
     "Referer": "https://www.mercadolivre.com.br/",
 }
+
+
+async def _get_ml_app_token() -> Optional[str]:
+    """Obtém token de app via client_credentials (sem OAuth de usuário).
+    Necessário para busca autenticada no ML a partir de IPs de servidor.
+    Cache em memória de 5h para evitar requests desnecessários.
+    """
+    global _app_token_cache
+
+    # Cache válido? (com 10min de margem)
+    if _app_token_cache["token"] and time.time() < (_app_token_cache["expires_at"] - 600):
+        return _app_token_cache["token"]
+
+    if not ML_APP_ID or not ML_SECRET_KEY:
+        logger.warning("[ML App Token] ML_APP_ID ou ML_SECRET_KEY não configurados")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                f"{ML_BASE_URL}/oauth/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": ML_APP_ID,
+                    "client_secret": ML_SECRET_KEY,
+                }
+            )
+            if response.is_success:
+                data = response.json()
+                token = data.get("access_token")
+                expires_in = data.get("expires_in", 21600)
+                _app_token_cache["token"] = token
+                _app_token_cache["expires_at"] = time.time() + expires_in
+                logger.info(f"[ML App Token] ✅ Token app obtido, expira em {expires_in}s")
+                return token
+            else:
+                logger.error(f"[ML App Token] Erro {response.status_code}: {response.text[:200]}")
+    except Exception as e:
+        logger.error(f"[ML App Token] Exception: {e}")
+
+    return None
 
 
 # ==================== MODELS ====================
@@ -105,9 +152,12 @@ async def search_products(
     condition: str = Query("new", description="new | used | not_specified"),
     current_user: Dict = Depends(get_current_user),
 ):
-    """Busca produtos no Mercado Livre com paginacao."""
+    """Proxy de busca do Mercado Livre.
+    Usa token de app (client_credentials) para autenticar e evitar bloqueio 403.
+    O ML bloqueia requests CORS de origens externas sem auth.
+    """
     try:
-        logger.info(f"[ML API] Buscando: {keyword} page={page} sort={sort}")
+        logger.info(f"[ML API] Buscando: {keyword!r} page={page} sort={sort}")
 
         offset = (page - 1) * limit
         params: Dict[str, Any] = {
@@ -116,26 +166,33 @@ async def search_products(
             "offset": offset,
         }
 
-        # so adiciona condition se nao for 'not_specified' (evita rejeicao da API)
         if condition and condition != "not_specified":
             params["condition"] = condition
 
         sort_map = {
-            "relevance": "relevance",
             "price_asc": "price_asc",
             "price_desc": "price_desc",
             "sales": "sold_quantity",
         }
-        if sort in sort_map and sort != "relevance":
+        if sort in sort_map:
             params["sort"] = sort_map[sort]
 
-        async with httpx.AsyncClient(timeout=30.0, headers=ML_HEADERS, follow_redirects=True) as client:
+        # Obtém token de app para autenticar a busca (resolve 403 por IP/CORS)
+        app_token = await _get_ml_app_token()
+        request_headers = dict(ML_HEADERS)
+        if app_token:
+            request_headers["Authorization"] = f"Bearer {app_token}"
+            logger.debug("[ML API] Usando app token para busca autenticada")
+        else:
+            logger.warning("[ML API] Sem app token — buscando sem autenticação")
+
+        async with httpx.AsyncClient(timeout=30.0, headers=request_headers, follow_redirects=True) as client:
             response = await client.get(f"{ML_BASE_URL}/sites/MLB/search", params=params)
 
-            # Se 403, tenta sem condition (ML pode rejeitar com filtros)
-            if response.status_code == 403:
-                logger.warning(f"[ML API] 403 com params={params}, tentando sem condition...")
-                params.pop("condition", None)
+            # Se 403 com condition, tenta sem
+            if response.status_code == 403 and "condition" in params:
+                logger.warning("[ML API] 403 com condition, tentando sem...")
+                params.pop("condition")
                 response = await client.get(f"{ML_BASE_URL}/sites/MLB/search", params=params)
 
             if not response.is_success:
@@ -143,7 +200,8 @@ async def search_products(
                 logger.error(f"[ML API] Erro {response.status_code}: {body}")
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Erro na API do Mercado Livre: {response.status_code}"
+                    detail=f"Mercado Livre retornou {response.status_code}. "
+                           f"Tente novamente em instantes."
                 )
 
             data = response.json()
@@ -153,7 +211,7 @@ async def search_products(
         total = paging.get("total", 0)
         has_more = offset + limit < total
 
-        logger.info(f"[ML API] {len(products)} produtos retornados (total={total})")
+        logger.info(f"[ML API] ✅ {len(products)} produtos (total={total})")
 
         return {
             "products": products,
@@ -165,11 +223,13 @@ async def search_products(
         }
 
     except httpx.HTTPStatusError as e:
-        logger.error(f"[ML API] HTTP {e.response.status_code}: {e.response.text}")
+        logger.error(f"[ML API] HTTP {e.response.status_code}: {e.response.text[:200]}")
         raise HTTPException(status_code=502, detail=f"Erro na API do Mercado Livre: {e.response.status_code}")
     except httpx.HTTPError as e:
-        logger.error(f"[ML API] Erro de conexao: {e}")
-        raise HTTPException(status_code=502, detail="Nao foi possivel conectar ao Mercado Livre")
+        logger.error(f"[ML API] Erro de conexão: {e}")
+        raise HTTPException(status_code=502, detail="Não foi possível conectar ao Mercado Livre")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[ML API] Erro inesperado: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
