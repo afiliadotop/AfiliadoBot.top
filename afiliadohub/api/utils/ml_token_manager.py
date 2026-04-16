@@ -171,9 +171,15 @@ class MLTokenManager:
     # ==================== TOKEN LOGIC ====================
 
     async def get_valid_token(self) -> str:
-        """Retorna access_token válido, renovando automaticamente se necessário"""
-        if not self.tokens:
-            self.tokens = self._load_tokens()
+        """Retorna access_token válido, renovando automaticamente se necessário.
+
+        No Render (ephemeral), o manager é recriado em cada request — sempre
+        carrega do Supabase para ter o estado mais recente.
+        """
+        # Sempre recarrega do storage para detectar tokens expirados no Supabase
+        fresh = self._load_tokens()
+        if fresh:
+            self.tokens = fresh
 
         if not self.tokens:
             raise Exception(
@@ -181,12 +187,19 @@ class MLTokenManager:
                 "ou rode o fluxo OAuth: python scripts/auth/ml_oauth.py"
             )
 
-        # Renova se faltar menos de 5 minutos para expirar
+        # Renova se já expirou ou faltar menos de 10 minutos
         expires_at = self.tokens.get("expires_at", 0)
-        if time.time() > (expires_at - 300):
-            logger.info("[ML Token] Token próximo da expiração, renovando...")
+        if time.time() > (expires_at - 600):
+            logger.info(
+                f"[ML Token] Token expirado/prestes a expirar "
+                f"(expires_at={expires_at:.0f}), renovando..."
+            )
             return await self._refresh_token()
 
+        logger.debug(
+            f"[ML Token] Token válido, expira em "
+            f"{(expires_at - time.time()) / 60:.0f} min"
+        )
         return self.tokens["access_token"]
 
     async def _refresh_token(self) -> str:

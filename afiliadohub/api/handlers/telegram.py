@@ -1103,6 +1103,48 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
 
         # 2. Verifica se é um link
         if "http" in text:
+            import re
+            
+            if "mercadolivre.com" in text or "mlb.ml" in text:
+                urls = re.findall(r'(https?://[^\s]+)', text)
+                if urls:
+                    url = urls[0]
+                    try:
+                        from .mercadolivre_api import fetch_ml_item
+                        import httpx
+                        
+                        # Resolve shortened links
+                        redirect_url = url
+                        if "/sec/" in url or "mlb.ml" in url:
+                            async with httpx.AsyncClient(timeout=10.0) as client:
+                                resp = await client.head(url, follow_redirects=True)
+                                redirect_url = str(resp.url)
+                                
+                        # Extrai ID
+                        match = re.search(r'MLB-?(\d+)', redirect_url, re.IGNORECASE)
+                        if match:
+                            mlb_id = match.group(1)
+                            await update.message.reply_text("🔄 Processando link do Mercado Livre...", parse_mode="HTML")
+                            
+                            product = await fetch_ml_item(mlb_id)
+                            if product:
+                                # Enviamos para o canal automaticamente
+                                chat_id = telegram_settings.get_group_chat_id() or telegram_settings.get_channel_id()
+                                if chat_id:
+                                    success = await self.send_product_to_channel(chat_id, product)
+                                    if success and is_private:
+                                        await update.message.reply_text(
+                                            "✅ <b>MÁQUINA DE OFERTAS!</b>\nO produto do Mercado Livre foi gerado com seu link de afiliado e enviado para o canal/grupo com sucesso!",
+                                            parse_mode="HTML"
+                                        )
+                                        return
+                            else:
+                                if is_private:
+                                    await update.message.reply_text("❌ Falha ao obter dados do produto no Mercado Livre. Verifique se o produto está ativo.", parse_mode="HTML")
+                                return
+                    except Exception as e:
+                        logger.error(f"[TELEGRAM ML Bot] Erro processando link: {e}")
+
             if is_private:
                 await update.message.reply_text(
                     "🔗 <b>Detectei um link!</b>\n\nPara converter links automaticamente ou adicionar produtos, fale com o Administrador ou use o Painel Web.",

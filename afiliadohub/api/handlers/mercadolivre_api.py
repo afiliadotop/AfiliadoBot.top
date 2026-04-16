@@ -126,8 +126,27 @@ def build_product_dict(item: Dict[str, Any]) -> Dict[str, Any]:
         "permalink": item.get("permalink", ""),
         "affiliate_link": generate_affiliate_link(item_id),
         "store": "mercado_livre",
-        "sold_quantity": item.get("sold_quantity"),
     }
+
+
+async def fetch_ml_item(item_id: str) -> Optional[Dict[str, Any]]:
+    """Gera request para a API Items do ML usando app token."""
+    try:
+        app_token = await _get_ml_app_token()
+        headers = dict(ML_HEADERS)
+        if app_token:
+            headers["Authorization"] = f"Bearer {app_token}"
+
+        async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+            resp = await client.get(f"{ML_BASE_URL}/items/MLB{item_id}")
+            if resp.status_code == 200:
+                item_data = resp.json()
+                return build_product_dict(item_data)
+            else:
+                logger.error(f"[ML Items API] Erro {resp.status_code} ao buscar MLB{item_id}")
+    except Exception as e:
+        logger.error(f"[ML Items API] Exception ao buscar MLB{item_id}: {e}")
+    return None
 
 
 # ==================== PUBLIC ENDPOINTS ====================
