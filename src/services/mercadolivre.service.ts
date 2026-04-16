@@ -1,31 +1,23 @@
 /**
- * Mercado Livre Service — Backend Proxy
+ * Mercado Livre Service — Vercel Proxy
  *
- * Arquitetura:
- *   Antes: Frontend → ML API diretamente (bloqueado por CORS/403 do ML)
- *   Agora:  Frontend → nosso backend (/api/mercadolivre/search) → ML API
+ * Arquitetura final:
+ *   Browser → /ml-api/sites/MLB/search (same-origin, Vercel)
+ *             ↓ Vercel rewrite proxy
+ *             https://api.mercadolibre.com/sites/MLB/search
  *
- * O ML bloqueia CORS de origens externas (Origin != *.mercadolivre.com.br).
- * O backend usa client_credentials token para autenticar e resolver o 403.
+ * Por que Vercel proxy?
+ *   - ML bloqueia CORS de origens externas (Origin: afiliadobot.top → 403)
+ *   - ML bloqueia IPs de datacenters (Render/AWS → 403)
+ *   - Vercel Edge Network não é bloqueado pelo ML
+ *   - Same-origin: sem CORS, sem bloqueio de CSP
+ *
+ * Configurado em vercel.json:
+ *   { "source": "/ml-api/:path*", "destination": "https://api.mercadolibre.com/:path*" }
  */
 
-const getBaseUrl = (): string => {
-    const url = import.meta.env.VITE_API_URL || '/api';
-    if (url.startsWith('http') && !url.endsWith('/api') && !url.includes('/api/')) {
-        return url.endsWith('/') ? `${url}api` : `${url}/api`;
-    }
-    return url;
-};
-
-const BASE_URL = getBaseUrl();
-
-const getAuthHeaders = (): HeadersInit => {
-    const token = localStorage.getItem('afiliadobot_token');
-    return {
-        'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
-    };
-};
+const ML_PROXY_BASE = '/ml-api';
+const ML_AFFILIATE_TAG = 'TG-695d2ec34ff75f00019fb064-2307648221';
 
 export interface MLProduct {
     id: string;
@@ -50,6 +42,37 @@ export interface MLSearchResult {
     has_more: boolean;
 }
 
+function buildAffiliateLink(itemId: string): string {
+    const numericId = itemId.replace('MLB-', '').replace('MLB', '');
+    return `https://produto.mercadolivre.com.br/MLB-${numericId}?matt_tool=82322591&matt_word=${ML_AFFILIATE_TAG}`;
+}
+
+function mapItem(item: any): MLProduct {
+    const price = item.price ?? 0;
+    const original = item.original_price;
+    const discount = (original && original > price)
+        ? Math.round(((original - price) / original) * 100)
+        : 0;
+
+    // Imagem em alta resolução
+    const image = (item.thumbnail ?? '').replace('-I.jpg', '-O.jpg');
+
+    return {
+        id: item.id,
+        name: item.title,
+        price,
+        original_price: original ?? undefined,
+        discount_percentage: discount,
+        image_url: image,
+        seller_name: item.seller?.nickname ?? 'N/A',
+        condition: item.condition ?? 'new',
+        shipping_free: item.shipping?.free_shipping ?? false,
+        permalink: item.permalink ?? '',
+        affiliate_link: buildAffiliateLink(item.id),
+        sold_quantity: item.sold_quantity ?? undefined,
+    };
+}
+
 export async function searchMLProducts(
     keyword: string,
     options: {
@@ -60,33 +83,46 @@ export async function searchMLProducts(
     } = {}
 ): Promise<MLSearchResult> {
     const { sort = 'relevance', condition = 'new', page = 1, limit = 20 } = options;
+    const offset = (page - 1) * limit;
 
     const params = new URLSearchParams({
-        keyword,
+        q: keyword,
         limit: String(limit),
-        page: String(page),
-        sort,
-        condition,
+        offset: String(offset),
     });
 
-    const response = await fetch(`${BASE_URL}/mercadolivre/search?${params.toString()}`, {
-        headers: getAuthHeaders(),
-    });
+    // Sort mapping
+    const sortMap: Record<string, string> = {
+        price_asc: 'price_asc',
+        price_desc: 'price_desc',
+        sales: 'sold_quantity',
+    };
+    if (sortMap[sort]) params.append('sort', sortMap[sort]);
+
+    // Condition (só adiciona se não for "todos")
+    if (condition !== 'not_specified') {
+        params.append('condition', condition);
+    }
+
+    // Chama via Vercel proxy (/ml-api → api.mercadolibre.com)
+    // same-origin = sem CORS header, sem bloqueio de ML
+    const url = `${ML_PROXY_BASE}/sites/MLB/search?${params.toString()}`;
+    const response = await fetch(url);
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const msg = (errorData as any).detail || `ML API retornou ${response.status}`;
-        throw new Error(msg);
+        throw new Error(`ML API retornou ${response.status}`);
     }
 
     const data = await response.json();
+    const products = (data.results ?? []).map(mapItem);
+    const total = data.paging?.total ?? 0;
 
     return {
-        products: data.products ?? [],
-        count: data.count ?? 0,
-        total: data.total ?? 0,
-        page: data.page ?? page,
-        has_more: data.has_more ?? false,
+        products,
+        count: products.length,
+        total,
+        page,
+        has_more: offset + limit < total,
     };
 }
 
