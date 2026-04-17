@@ -132,10 +132,7 @@ def build_product_dict(item: Dict[str, Any]) -> Dict[str, Any]:
 async def fetch_ml_item(item_id: str) -> Optional[Dict[str, Any]]:
     """Gera request para a API Items do ML usando app token."""
     try:
-        app_token = await _get_ml_app_token()
         headers = dict(ML_HEADERS)
-        if app_token:
-            headers["Authorization"] = f"Bearer {app_token}"
 
         async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
             resp = await client.get(f"{ML_BASE_URL}/items/MLB{item_id}")
@@ -143,7 +140,7 @@ async def fetch_ml_item(item_id: str) -> Optional[Dict[str, Any]]:
                 item_data = resp.json()
                 return build_product_dict(item_data)
             else:
-                logger.error(f"[ML Items API] Erro {resp.status_code} ao buscar MLB{item_id}")
+                logger.error(f"[ML Items API] Erro {resp.status_code} ao buscar MLB{item_id}: {resp.text}")
     except Exception as e:
         logger.error(f"[ML Items API] Exception ao buscar MLB{item_id}: {e}")
     return None
