@@ -4,7 +4,7 @@ import random
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup, ReactionTypeEmoji
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -154,6 +154,9 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("awin_radar", self.awin_radar_command))
         self.application.add_handler(CommandHandler("cj_radar", self.cj_radar_command))
 
+        # Comandos Story
+        self.application.add_handler(CommandHandler("story", self.story_command))
+
         # Comandos de busca
         self.application.add_handler(CommandHandler("buscar", self.search_command))
         self.application.add_handler(CommandHandler("hoje", self.today_command))
@@ -252,89 +255,52 @@ Aqui estão os principais comandos para você economizar muito:
         await update.message.reply_text(help_text, parse_mode="HTML")
 
     async def cupom_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /cupom - Traz cupom exclusivo Awin ou fallback local"""
+        """Handler para /cupom - Traz Central de Cupons da Shopee"""
+        await self._apply_reaction(update, "🤩")
         try:
-            # 1. Tentar pegar um Voucher VIP Atualizado da Awin
-            try:
-                awin_client = AwinAffiliateClient()
-                programs = await awin_client.get_programs(relationship="joined")
-                if programs:
-                    joined_ids = [str(p["id"]) for p in programs]
-                    # Limita top 15 para resposta rápida do bot
-                    offers_resp = await awin_client.get_offers(
-                        advertiser_ids=[int(id) for id in joined_ids[:15]], 
-                        promotion_types=["voucher"], 
-                        page_size=25
+            # Enviar Banner Interativo Shopee Oficial
+            from ..handlers.shopee_api import create_shopee_client
+            client = create_shopee_client()
+            
+            # Avisa user q estamos gerando vip
+            processing_msg = await update.message.reply_text("🔄 Conectando com a base de benefícios Shopee...")
+            
+            async with client:
+                short_link = await client.generate_short_link(
+                    origin_url="https://shopee.com.br/m/cupons-diarios",
+                    sub_ids=["telegram", "cupom", "vip"]
+                )
+            
+            vip_url = short_link if short_link else "https://shopee.com.br/m/cupons-diarios"
+            
+            message = "🎟 <b>VOUCHERS E CUPONS SHOPEE LIBERADOS!</b>\n\n"
+            message += "✨ Explore todos os códigos de Frete Grátis e Descontos VIP atualizados agora.\n\n"
+            message += "🛍 <i>Acesse a central secreta e ative antes que acabe!</i>"
+            
+            keyboard = [[InlineKeyboardButton("🎟️ Ativar Meus Cupons", url=vip_url)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            import os
+            banner_path = r"c:\ProjetoAfiliadoTop\public\cupomliberado.jpeg"
+            
+            await processing_msg.delete()
+            
+            if os.path.exists(banner_path):
+                with open(banner_path, "rb") as photo_file:
+                    await self.application.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=photo_file,
+                        caption=message,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup
                     )
-                    offers = offers_resp.get("data", []) if isinstance(offers_resp, dict) else []
-                    if isinstance(offers_resp, list): 
-                        offers = offers_resp
-                    
-                    # Filtra apenas quem tem CODE explícito
-                    filtered = [o for o in offers if str(o.get('advertiser', {}).get('id')) in joined_ids and o.get('code')]
-                    if filtered:
-                        voucher = random.choice(filtered)
-                        loja = voucher.get('advertiser', {}).get('name', 'Loja Parceira')
-                        promo = voucher.get('title', 'Desconto Especial')
-                        codigo = voucher.get('code')
-                        link = voucher.get('urlTracking') or voucher.get('deeplink') or 'https://afiliado.top'
-                        
-                        cupom_msg = f"🎟 *CUPOM VIP EXCLUSIVO: {loja}*\n\n"
-                        cupom_msg += f"✨ {promo}\n\n"
-                        cupom_msg += f"✂️ Salve e Copie o código abaixo:\n👉 `{codigo}` 👈\n\n"
-                        
-                        keyboard = [[InlineKeyboardButton(f"🛒 Ativar em {loja}", url=link)]]
-                        reply_markup = InlineKeyboardMarkup(keyboard)
-                        
-                        await update.message.reply_text(cupom_msg, parse_mode="Markdown", reply_markup=reply_markup)
-                        return
-            except Exception as e:
-                logger.warning(f"[Bot] Erro ao buscar cupom AWIN vivo: {e}. Servindo fallback...")
+            else:
+                await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+            return
 
-            # 2. Tentar buscar da CJ via Radar Service
-            try:
-                radar = CommissionRadarService()
-                vouchers = await radar.fetch_vouchers()
-                if vouchers:
-                    # Filtra os que tem cupom_code (evita produtos genéricos da busca keywords)
-                    with_code = [v for v in vouchers if v.get("coupon_code")]
-                    if not with_code: 
-                        with_code = vouchers # fallback
-
-                    voucher = random.choice(with_code)
-                    message = self._format_product_message(voucher)
-                    await self._send_formatted_product_reply(update, voucher, message)
-                    return
-            except Exception as e:
-                logger.warning(f"[Bot] Erro ao buscar cupons CJ via Radar: {e}")
-
-            # 3. Fallback Base Shopee (API Live Premium)
-            try:
-                from ..handlers.shopee_api import create_shopee_client
-                client = create_shopee_client()
-                
-                async with client:
-                    # Tenta pegar a oferta com maior comissão AMS como fallback glamouroso
-                    result = await client.get_products(is_ams_offer=True, sort_type=5, limit=5)
-                
-                nodes = result.get("nodes", [])
-                if nodes:
-                    # Pega um aleatório dentro do top 5
-                    import random
-                    node = random.choice(nodes)
-                    product = self._map_shopee_node_to_product(node)
-                    
-                    message = f"🎟 *DICA DE OURO: Cupom Embutido!*\n\n"
-                    message += f"Não achei um código digitável, mas encontrei essa oferta Shopee com desconto absurdo na fonte:\n\n"
-                    message += self._format_product_message(product)
-                    
-                    await self._send_formatted_product_reply(update, product, message)
-                    return
-            except Exception as e:
-                logger.warning(f"[Bot] Erro ao buscar fallback na Shopee Live: {e}")
-
-            # 4. Último Recurso Fallback Genérica
-            product = await self.supabase.get_random_product(min_discount=20)
+        except Exception as e:
+            logger.error(f"[Cupom Command] Erro: {e}")
+            await update.message.reply_text("❌ Tivemos um erro temporário, nossos cupons retornam em breve!")
 
             if product:
                 message = self._format_product_message(product)
@@ -408,6 +374,7 @@ Aqui estão os principais comandos para você economizar muito:
 
     async def search_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /buscar [termo]"""
+        await self._apply_reaction(update, "👀")
         try:
             if not context.args:
                 await update.message.reply_text(
@@ -417,44 +384,52 @@ Aqui estão os principais comandos para você economizar muito:
 
             search_term = " ".join(context.args)
 
-            # Busca no banco (simples - poderia usar full-text search)
-            query = f"""
-            SELECT * FROM products 
-            WHERE is_active = TRUE 
-            AND (name ILIKE '%{search_term}%' OR description ILIKE '%{search_term}%' OR category ILIKE '%{search_term}%')
-            ORDER BY discount_percentage DESC NULLS LAST
-            LIMIT 5
-            """
+            # Busca ao vivo na Shopee via API
+            try:
+                from ..handlers.shopee_api import create_shopee_client
+                client = create_shopee_client()
+                
+                msg = await update.message.reply_text("🔄 Buscando novidades em tempo real na Shopee...", parse_mode="HTML")
+                
+                async with client:
+                    result = await client.get_products(keyword=search_term, limit=3)
+                
+                nodes = result.get("nodes", [])
+                
+                if nodes:
+                    await msg.edit_text(
+                        f"🔍 *Achados Fresquinhos para '{search_term}':*", parse_mode="Markdown"
+                    )
 
-            # Executa query raw (simplificado)
-            # Na prática, usar prepared statements
-            response = (
-                self.supabase.client.table("products")
-                .select("*")
-                .ilike("name", f"%{search_term}%")
-                .eq("is_active", True)
-                .limit(5)
-                .execute()
-            )
+                    for node in nodes:
+                        product = self._map_shopee_node_to_product(node)
+                        message = self._format_product_message(product)
+                        await self._send_formatted_product_reply(update, product, message)
+                        
+                        import asyncio
+                        await asyncio.sleep(0.5)
 
-            products = response.data
-
-            if products:
+                    # Botões de Filtro VIP Shopee
+                    keyboard = [
+                        [InlineKeyboardButton("🔥 Mais Vendidos", callback_data=f"shopee_filter_sales|{search_term[:40]}")],
+                        [InlineKeyboardButton("💸 Menor Preço", callback_data=f"shopee_filter_price|{search_term[:40]}")],
+                        [InlineKeyboardButton("✨ Achadinhos Alta Comissão", callback_data=f"shopee_filter_ams|{search_term[:40]}")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await update.message.reply_text(
+                        "🎯 *Refinar Busca:*", 
+                        parse_mode="Markdown", 
+                        reply_markup=reply_markup
+                    )
+                else:
+                    await msg.edit_text(
+                        f"😕 Poxa, nenhum produto de alta qualidade encontrado na Shopee para '{search_term}' agora."
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Erro ao buscar '{search_term}' na api shopee: {e}")
                 await update.message.reply_text(
-                    f"🔍 *Resultados para '{search_term}':*", parse_mode="Markdown"
-                )
-
-                for product in products:
-                    message = self._format_product_message(product)
-                    await self._send_formatted_product_reply(update, product, message)
-
-                    # Pequena pausa
-                    import asyncio
-
-                    await asyncio.sleep(0.5)
-            else:
-                await update.message.reply_text(
-                    f"😕 Nenhum produto encontrado para '{search_term}'"
+                    "❌ Tivemos um probleminha nos servidores da Shopee, tente novamente em instantes!"
                 )
 
         except Exception as e:
@@ -465,6 +440,7 @@ Aqui estão os principais comandos para você economizar muito:
 
     async def today_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /hoje - O que está bombando Hoje na Shopee"""
+        await self._apply_reaction(update, "🔥")
         try:
             today = datetime.now().date().strftime("%d/%m")
             from ..handlers.shopee_api import create_shopee_client
@@ -583,6 +559,70 @@ Ex: /buscar eletrônicos
             logger.error(f"Erro no comando /stats: {e}")
             await update.message.reply_text("📊 Estatísticas indisponíveis no momento.")
 
+    async def _apply_reaction(self, update: Update, emoji: str = "👀"):
+        """Aplica uma reação dinâmica na mensagem do usuário."""
+        try:
+            if update.message:
+                await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji)])
+        except Exception as e:
+            logger.debug(f"[Reação] Erro ao adicionar reação {emoji}: {e}")
+
+    async def _post_product_story(self, bot: Bot, chat_id: str, product: Dict[str, Any]):
+        """Publica uma oferta destacada diretamente no Story do Telegram via API v21+."""
+        try:
+            image_url = product.get("image_url")
+            store = product.get("store", "Lojas").replace("_", " ").title()
+            discount = product.get("discount_percentage", 0)
+            
+            caption = f"🔥 {discount}% OFF na {store}!\n" + self._format_product_message(product, highlight=True)
+            
+            if image_url:
+                await bot.post_story(
+                    chat_id=chat_id,
+                    media=image_url,
+                    caption=caption
+                )
+                logger.info(f"Story publicado com sucesso para: {product.get('id', '')}")
+            else:
+                logger.warning(f"Produto sem foto, story não gerado: {product.get('id', '')}")
+        except AttributeError:
+            logger.warning("[Telegram VIP] O python-telegram-bot atual não suporta post_story.")
+        except Exception as e:
+            logger.error(f"Erro ao postar story da oferta: {e}")
+
+    async def story_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /story [id_produto] - Permite admin forçar criação de Story."""
+        try:
+            user_id = update.effective_user.id
+            if str(user_id) not in str(os.getenv("ADMIN_IDS", "")):
+                await update.message.reply_text("⛔️ Apenas admins podem forçar stories manuais.")
+                return
+
+            if not context.args:
+                await update.message.reply_text("🔍 Use: /story [id_produto]")
+                return
+
+            search_term = context.args[0]
+            # Busca simples para carregar o produto
+            response = self.supabase.client.table("products").select("*").ilike("id", f"%{search_term}%").limit(1).execute()
+            products = response.data
+
+            if not products:
+                await update.message.reply_text("❌ Produto não encontrado no banco.")
+                return
+
+            product = products[0]
+            await update.message.reply_text(f"⏳ Publicando Story para o produto...")
+            
+            chat_to_post = os.getenv("TELEGRAM_CHANNEL_ID", update.effective_chat.id)
+            await self._post_product_story(context.bot, chat_to_post, product)
+            
+            await update.message.reply_text("✅ Story postado/tentado com sucesso!")
+
+        except Exception as e:
+            logger.error(f"Erro no /story: {e}")
+            await update.message.reply_text("❌ Falha ao postar Story.")
+
     def _map_shopee_node_to_product(self, node: Dict[str, Any]) -> Dict[str, Any]:
         """Converte o retorno da API GraphQL Live da Shopee para o formato local Supabase"""
         price = float(node.get("priceMin", 0))
@@ -610,6 +650,7 @@ Ex: /buscar eletrônicos
 
     async def promo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /promo - Promoção em destaque com maior desconto AO VIVO da Shopee"""
+        await self._apply_reaction(update, "🤩")
         try:
             # Puxa oferta de maior desocnto (sortType: 5 => COMMISSION_DESC, sortType: 3/4 => PREÇO.
             # Documentação: 5 = COMMISSION_DESC. Relevaremos isso para AMS_OFFER True!
@@ -628,6 +669,10 @@ Ex: /buscar eletrônicos
                 
                 message = self._format_product_message(product, highlight=True)
                 await self._send_formatted_product_reply(update, product, message)
+                
+                # Tenta postar como Story automaticamente
+                chat_to_post = os.getenv("TELEGRAM_CHANNEL_ID", update.effective_chat.id)
+                await self._post_product_story(context.bot, chat_to_post, product)
             else:
                 await update.message.reply_text(
                     "🔥 Nenhuma promoção de Super Comissão disponível agora, mas confira o /cupom para descontos garantidos!"
@@ -729,6 +774,7 @@ Ex: /buscar eletrônicos
 
     async def top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /top - Top 5 Ofertas AMS Live Vendedores Chave da Shopee"""
+        await self._apply_reaction(update, "🏆")
         try:
             from ..handlers.shopee_api import create_shopee_client
             client = create_shopee_client()
@@ -1258,6 +1304,47 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
             await self.cupom_command(update, context)
         elif data == "today_promo":
             await self.today_command(update, context)
+        elif data.startswith("shopee_filter_"):
+            parts = data.replace("shopee_filter_", "").split("|")
+            filter_type = parts[0]
+            keyword = parts[1] if len(parts) > 1 else ""
+            
+            filter_name = "Mais Vendidos" if filter_type == "sales" else "Menor Preço" if filter_type == "price" else "Alta Comissão"
+            msg = await update.callback_query.message.reply_text(f"⏳ Buscando ao vivo: *{keyword}* ({filter_name})...", parse_mode="Markdown")
+            
+            try:
+                from ..handlers.shopee_api import create_shopee_client
+                client = create_shopee_client()
+                
+                sort_type = 1 # Recomendação (Default)
+                is_ams = False
+                
+                if filter_type == "sales":
+                    sort_type = 2
+                elif filter_type == "price":
+                    sort_type = 4
+                elif filter_type == "ams":
+                    sort_type = 5
+                    is_ams = True
+                
+                async with client:
+                    result = await client.get_products(keyword=keyword, sort_type=sort_type, is_ams_offer=is_ams, limit=3)
+                
+                nodes = result.get("nodes", [])
+                
+                if nodes:
+                    await msg.delete()
+                    for node in nodes:
+                        product = self._map_shopee_node_to_product(node)
+                        message = self._format_product_message(product)
+                        await self._send_formatted_product_reply(update, product, message)
+                        import asyncio
+                        await asyncio.sleep(0.5)
+                else:
+                    await msg.edit_text("😕 Nenhum resultado premium encontrado com este filtro.")
+            except Exception as e:
+                logger.error(f"Erro no filtro shopee: {e}")
+                await update.callback_query.message.reply_text("❌ Serviço indisponível no momento.")
 
     # ==================== MÉTODOS UTILITÁRIOS ====================
 
