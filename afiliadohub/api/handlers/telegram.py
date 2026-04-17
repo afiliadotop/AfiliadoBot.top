@@ -600,7 +600,7 @@ Ex: /buscar eletrônicos
             "original_price": original_price,
             "discount_price": price,
             "discount_percentage": discount,
-            "affiliate_url": node.get("offerLink"),
+            "affiliate_link": node.get("offerLink"),
             "image_url": node.get("imageUrl"),
             "store": "shopee",
             "category": "Achadinhos Premium",
