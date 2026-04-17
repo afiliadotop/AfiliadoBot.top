@@ -130,9 +130,20 @@ def build_product_dict(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def fetch_ml_item(item_id: str) -> Optional[Dict[str, Any]]:
-    """Gera request para a API Items do ML usando app token."""
+    """Gera request para a API Items do ML usando app token ou auth token de user real."""
     try:
+        from ..utils.ml_token_manager import MLTokenManager
+        
         headers = dict(ML_HEADERS)
+        
+        try:
+            # Obtém token de usuário real do banco para não barrar no 403 PolicyAgent
+            ml_manager = MLTokenManager(ML_APP_ID, ML_SECRET_KEY)
+            token = await ml_manager.get_valid_token()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+        except Exception as auth_e:
+            logger.warning(f"[ML Items API] Falha pegando token offline, usando sem token: {auth_e}")
 
         async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
             resp = await client.get(f"{ML_BASE_URL}/items/MLB{item_id}")
