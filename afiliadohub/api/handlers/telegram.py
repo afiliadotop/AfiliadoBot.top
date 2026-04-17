@@ -196,10 +196,11 @@ class TelegramBot:
 
 Olá {update.effective_user.first_name}, que bom ter você aqui! 👋
 
-Eu sou seu <b>Garimpeiro de Ofertas VIP</b>. Minha missão é monitorar as maiores lojas do Brasil (Shopee, Amazon, AliExpress...) 24h por dia para encontrar os <b>preços mais baixos e cupons escondidos</b>.
+Eu sou seu <b>Garimpeiro de Ofertas VIP</b>. Minha missão é monitorar as maiores lojas do Brasil (Mercado Livre, Shopee, Amazon...) 24h por dia para encontrar os <b>preços mais baixos e cupons escondidos</b>.
 
 🛍️ <b>O que eu faço por você?</b>
 - 🔍 Busco qualquer produto (digite /buscar [nome])
+- 🤝 Mostro Ofertas do Mercado Livre (digite /mercado)
 - 🎟️ Entrego Cupons VIP (digite /cupom)
 - 🔥 Mostro a melhor oferta AGORA (digite /promo)
 
@@ -210,6 +211,9 @@ Eu sou seu <b>Garimpeiro de Ofertas VIP</b>. Minha missão é monitorar as maior
             [
                 InlineKeyboardButton("🔥 Melhor Promoção", callback_data="today_promo"),
                 InlineKeyboardButton("🎟️ Pegar Cupom VIP", callback_data="random_coupon"),
+            ],
+            [
+                InlineKeyboardButton("🤝 Ofertas Mercado Livre", callback_data="store_mercado_livre"),
             ],
             [
                 InlineKeyboardButton("🛍️ Ver na Shopee", callback_data="store_shopee"),
@@ -1018,6 +1022,7 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
         
         commands = [
             BotCommand("start", "🚀 Começar e Ver Ofertas VIP"),
+            BotCommand("mercado", "🤝 Ver Ofertas do Mercado Livre"),
             BotCommand("cupom", "🎟️ Pegar Cupom de Desconto VIP"),
             BotCommand("promo", "🔥 Ver Melhor Oferta do Momento"),
             BotCommand("buscar", "🔍 Buscar Produto (ex: /buscar fone)"),
