@@ -335,6 +335,18 @@ Aqui estão os principais comandos para você economizar muito:
     ):
         """Handler para comandos de loja específica"""
         try:
+            # Processa link passado diretamente com o comando (ex: /mercado https://bit.ly/...)
+            if context.args and len(context.args) > 0:
+                url = context.args[0]
+                if "http" in url:
+                    if store == "mercado_livre":
+                        success = await self._process_ml_link(url, update, is_private=(update.message.chat.type == "private"))
+                        if success:
+                            return
+                    else:
+                        await update.message.reply_text("🔗 O processamento automático de links diretos está disponível apenas para Mercado Livre no momento.")
+                        return
+
             # Busca 3 produtos da loja
             filters = {"store": store, "min_discount": 10, "limit": 3}
 
@@ -354,6 +366,7 @@ Aqui estão os principais comandos para você economizar muito:
                     except Exception as stats_err:
                         logger.warning(f"Erro ao incrementar status: {stats_err}")
 
+                    import asyncio
                     await asyncio.sleep(0.5)
             else:
                 emoji = STORE_EMOJIS.get(store, "🏪")
@@ -1110,52 +1123,72 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
         if "http" in text:
             import re
             
-            if "mercadolivre.com" in text or "mlb.ml" in text:
-                urls = re.findall(r'(https?://[^\s]+)', text)
-                if urls:
-                    url = urls[0]
-                    try:
-                        from .mercadolivre_api import fetch_ml_item
-                        import httpx
-                        
-                        # Resolve shortened links
-                        redirect_url = url
-                        if "/sec/" in url or "mlb.ml" in url:
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                resp = await client.head(url, follow_redirects=True)
-                                redirect_url = str(resp.url)
-                                
-                        # Extrai ID
-                        match = re.search(r'MLB-?(\d+)', redirect_url, re.IGNORECASE)
-                        if match:
-                            mlb_id = match.group(1)
-                            await update.message.reply_text("🔄 Processando link do Mercado Livre...", parse_mode="HTML")
-                            
-                            product = await fetch_ml_item(mlb_id)
-                            if product:
-                                # Enviamos para o canal automaticamente
-                                chat_id = telegram_settings.get_group_chat_id() or telegram_settings.get_channel_id()
-                                if chat_id:
-                                    success = await self.send_product_to_channel(chat_id, product)
-                                    if success and is_private:
-                                        await update.message.reply_text(
-                                            "✅ <b>MÁQUINA DE OFERTAS!</b>\nO produto do Mercado Livre foi gerado com seu link de afiliado e enviado para o canal/grupo com sucesso!",
-                                            parse_mode="HTML"
-                                        )
-                                        return
-                            else:
-                                if is_private:
-                                    await update.message.reply_text("❌ Falha ao obter dados do produto no Mercado Livre. Verifique se o produto está ativo.", parse_mode="HTML")
-                                return
-                    except Exception as e:
-                        logger.error(f"[TELEGRAM ML Bot] Erro processando link: {e}")
+            urls = re.findall(r'(https?://[^\s]+)', text)
+            if urls:
+                url = urls[0]
+                # Se for Mercado Livre ou um encurtador comum (ex: bit.ly)
+                if "mercadolivre.com" in url or "mlb.ml" in url or "bit.ly" in url or "/sho" in url or "amzn.to" in url:
+                    processed = await self._process_ml_link(url, update, is_private)
+                    if processed:
+                        return
 
             if is_private:
                 await update.message.reply_text(
-                    "🔗 <b>Detectei um link!</b>\n\nPara converter links automaticamente ou adicionar produtos, fale com o Administrador ou use o Painel Web.",
+                    "🔗 <b>Detectei um link!</b>\n\nNenhuma automação compatível com esse formato ainda. Para converter outros links ou adicionar produtos, fale com o Administrador.",
                     parse_mode="HTML",
                 )
             return
+
+    async def _process_ml_link(self, url: str, update: Update, is_private: bool) -> bool:
+        """Helper para resolver links e enviar para o canal (Se for ML)."""
+        try:
+            from .mercadolivre_api import fetch_ml_item
+            import httpx
+            import re
+            
+            # Resolve shortened links if it seems shortened or belongs to ML
+            redirect_url = url
+            if any(x in url for x in ["/sec/", "mlb.ml", "bit.ly", "tinyurl"]):
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.head(url, follow_redirects=True)
+                    redirect_url = str(resp.url)
+                    
+            if "mercadolivre.com" not in redirect_url and "mlb.ml" not in redirect_url:
+                # Não é um link ML mesmo após redirect
+                return False
+
+            # Extrai ID do Mercado Livre
+            match = re.search(r'MLB-?(\d+)', redirect_url, re.IGNORECASE)
+            if match:
+                mlb_id = match.group(1)
+                
+                if is_private:
+                    # Envia status
+                    await update.message.reply_text("🔄 Processando link do Mercado Livre...", parse_mode="HTML")
+                
+                product = await fetch_ml_item(mlb_id)
+                if product:
+                    # Enviamos para o canal automaticamente
+                    from ..utils.telegram_settings_manager import telegram_settings
+                    chat_id = telegram_settings.get_group_chat_id() or telegram_settings.get_channel_id()
+                    if chat_id:
+                        success = await self.send_product_to_channel(chat_id, product)
+                        if success and is_private:
+                            await update.message.reply_text(
+                                "✅ <b>MÁQUINA DE OFERTAS!</b>\nO produto do Mercado Livre foi gerado com seu link de afiliado e enviado para o canal/grupo com sucesso!",
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                            return True
+                else:
+                    if is_private:
+                        await update.message.reply_text("❌ Falha ao obter dados do produto no Mercado Livre. Verifique se o produto está ativo.", parse_mode="HTML")
+                    return True
+                    
+        except Exception as e:
+            logger.error(f"[TELEGRAM ML Bot] Erro processando link: {e}")
+            
+        return False
 
         # 3. Caso contrário, resposta padrão educada (Apenas se for no privado)
         if is_private:
