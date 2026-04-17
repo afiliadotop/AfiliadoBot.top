@@ -598,7 +598,7 @@ Ex: /buscar eletrônicos
             "id": node.get("itemId"),
             "name": node.get("productName", "Produto Shopee (AMS Extra)"),
             "original_price": original_price,
-            "discount_price": price,
+            "current_price": price,
             "discount_percentage": discount,
             "affiliate_link": node.get("offerLink"),
             "image_url": node.get("imageUrl"),
@@ -1349,9 +1349,9 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
             desire += f"❌ <s>De: R$ {original_price:.2f}</s>\n"
         
         if price > 0:
-            desire += f"✅ <b>Por apenas: R$ {price:.2f}</b>\n"
+            desire += f"🔥 <b>POR APENAS: R$ {price:.2f}</b> 😱\n"
         else:
-            desire += f"💰 <b>Consulte o preço especial no link!</b>\n"
+            desire += f"💰 <b>Consulte o super preço no site!</b>\n"
 
         rating = product.get("rating")
         review_count = product.get("review_count", 0)
