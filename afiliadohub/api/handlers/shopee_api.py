@@ -101,6 +101,12 @@ async def get_products(
     min_discount: Optional[int] = Query(
         None, ge=0, le=100, description="Desconto mínimo %"
     ),
+    is_ams_offer: Optional[bool] = Query(
+        None, description="Apenas ofertas com comissão extra de vendedor"
+    ),
+    is_key_seller: Optional[bool] = Query(
+        None, description="Apenas vendedores chave/mall"
+    ),
     # Auth
     current_user: Dict = Depends(get_current_user),
 ):
@@ -126,7 +132,12 @@ async def get_products(
 
         async with client:
             result = await client.get_products(
-                keyword=keyword, sort_type=sort_type, page=page, limit=limit
+                keyword=keyword, 
+                sort_type=sort_type, 
+                page=page, 
+                limit=limit,
+                is_ams_offer=is_ams_offer,
+                is_key_seller=is_key_seller
             )
 
         products = result.get("nodes", [])
@@ -195,6 +206,10 @@ async def get_products(
             applied_filters["minSales"] = min_sales
         if min_discount is not None:
             applied_filters["minDiscount"] = min_discount
+        if is_ams_offer is not None:
+            applied_filters["isAmsOffer"] = is_ams_offer
+        if is_key_seller is not None:
+            applied_filters["isKeySeller"] = is_key_seller
 
         logger.info(
             f"[Shopee API] Returning {len(filtered_products)} products (admin={is_admin}, filters={len(applied_filters)})"

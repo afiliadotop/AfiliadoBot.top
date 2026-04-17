@@ -599,50 +599,138 @@ class ShopeeAffiliateClient:
         self, start_timestamp: int, end_timestamp: int, scroll_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Obtém relatório de conversões e comissões
-
-        Args:
-            start_timestamp: Timestamp de início
-            end_timestamp: Timestamp de fim
-            scroll_id: ID de paginação (opcional)
-
-        Returns:
-            Relatório de conversões
+        Obtém relatório de conversões e comissões da Shopee
         """
-        # Nota: scroll_id deve ter aspas escapadas na query
         scroll_param = f', scrollId: "{scroll_id}"' if scroll_id else ""
 
         query = f"""
-        query ConversionReport {{
+        {{
             conversionReport(
                 purchaseTimeStart: {start_timestamp},
                 purchaseTimeEnd: {end_timestamp}{scroll_param}
             ) {{
                 nodes {{
-                    orderId
-                    productId
-                    productName
-                    commissionAmount
-                    orderAmount
+                    conversionId
                     purchaseTime
-                    status
+                    clickTime
+                    buyerType
+                    utmContent
+                    shopeeCommissionCapped
+                    sellerCommission
+                    netCommission
+                    totalCommission
+                    campaignType
+                    orders {{
+                        orderId
+                        orderStatus
+                        shopType
+                        items {{
+                            itemId
+                            itemName
+                            itemPrice
+                            qty
+                            actualAmount
+                            displayItemStatus
+                            itemTotalCommission
+                            itemSellerCommission
+                            itemShopeeCommissionCapped
+                        }}
+                    }}
                 }}
-                scrollId
-                totalCount
+                pageInfo {{
+                    limit
+                    hasNextPage
+                    scrollId
+                }}
             }}
         }}
         """
 
         result = await self.graphql_query(query)
-
         if "data" in result and "conversionReport" in result["data"]:
             report = result["data"]["conversionReport"]
-            logger.info(
-                f"[Shopee] Relatório com {len(report.get('nodes', []))} conversões"
-            )
-            return report
+            return {"nodes": report.get("nodes", []), "pageInfo": report.get("pageInfo", {})}
+        return {"nodes": [], "pageInfo": {}}
 
-        return {"nodes": [], "scrollId": None, "totalCount": 0}
+    async def get_validated_report(self, scroll_id: Optional[str] = None, limit: int = 500) -> Dict[str, Any]:
+        """
+        Obtém relatório de conversões já validadas e definitivas (para financeiro).
+        """
+        scroll_param = f', scrollId: "{scroll_id}"' if scroll_id else ""
+        query = f"""
+        {{
+            validatedReport(limit: {limit}{scroll_param}) {{
+                nodes {{
+                    conversionId
+                    purchaseTime
+                    clickTime
+                    shopeeCommissionCapped
+                }}
+                pageInfo {{
+                    limit
+                    hasNextPage
+                    scrollId
+                }}
+            }}
+        }}
+        """
+        
+        result = await self.graphql_query(query)
+        if "data" in result and "validatedReport" in result["data"]:
+            report = result["data"]["validatedReport"]
+            return {"nodes": report.get("nodes", []), "pageInfo": report.get("pageInfo", {})}
+        return {"nodes": [], "pageInfo": {}}
+
+    async def get_item_feeds(self, feed_mode: str = "FULL") -> List[Dict[str, Any]]:
+        """
+        Lista os catálogos (feeds) de produtos disponíveis
+        """
+        query = f"""
+        {{
+            listItemFeeds(feedMode: {feed_mode}) {{
+                feeds {{
+                    datafeedId
+                    datafeedName
+                    referenceId
+                    description
+                    totalCount
+                    date
+                    feedMode
+                }}
+            }}
+        }}
+        """
+        
+        result = await self.graphql_query(query)
+        if "data" in result and "listItemFeeds" in result["data"]:
+            return result["data"]["listItemFeeds"].get("feeds", [])
+        return []
+
+    async def get_item_feed_data(self, datafeed_id: str, offset: int = 0, limit: int = 500) -> Dict[str, Any]:
+        """
+        Baixa o conteúdo de um catálogo em lotes de até 500.
+        """
+        query = f"""
+        {{
+            getItemFeedData(datafeedId: "{datafeed_id}", offset: {offset}, limit: {limit}) {{
+                rows {{
+                    columns
+                    updateType
+                }}
+                pageInfo {{
+                    hasNextPage
+                    totalCount
+                    offset
+                    limit
+                }}
+            }}
+        }}
+        """
+        
+        result = await self.graphql_query(query)
+        if "data" in result and "getItemFeedData" in result["data"]:
+            return result["data"]["getItemFeedData"]
+        return {"rows": [], "pageInfo": {}}
 
     async def test_connection(self) -> bool:
         """

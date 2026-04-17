@@ -308,7 +308,32 @@ Aqui estão os principais comandos para você economizar muito:
             except Exception as e:
                 logger.warning(f"[Bot] Erro ao buscar cupons CJ via Radar: {e}")
 
-            # 2. Fallback Base Genérica
+            # 3. Fallback Base Shopee (API Live Premium)
+            try:
+                from ..handlers.shopee_api import create_shopee_client
+                client = create_shopee_client()
+                
+                async with client:
+                    # Tenta pegar a oferta com maior comissão AMS como fallback glamouroso
+                    result = await client.get_products(is_ams_offer=True, sort_type=5, limit=5)
+                
+                nodes = result.get("nodes", [])
+                if nodes:
+                    # Pega um aleatório dentro do top 5
+                    import random
+                    node = random.choice(nodes)
+                    product = self._map_shopee_node_to_product(node)
+                    
+                    message = f"🎟 *DICA DE OURO: Cupom Embutido!*\n\n"
+                    message += f"Não achei um código digitável, mas encontrei essa oferta Shopee com desconto absurdo na fonte:\n\n"
+                    message += self._format_product_message(product)
+                    
+                    await self._send_formatted_product_reply(update, product, message)
+                    return
+            except Exception as e:
+                logger.warning(f"[Bot] Erro ao buscar fallback na Shopee Live: {e}")
+
+            # 4. Último Recurso Fallback Genérica
             product = await self.supabase.get_random_product(min_discount=20)
 
             if product:
@@ -321,7 +346,7 @@ Aqui estão os principais comandos para você economizar muito:
                 )
             else:
                 await update.message.reply_text(
-                    "😕 Nenhum cupom listado no momento. Tente novamente mais tarde!"
+                    "😕 Nenhum cupom ou super desconto listado no momento. Tente novamente mais tarde!"
                 )
 
         except Exception as e:
@@ -439,43 +464,40 @@ Aqui estão os principais comandos para você economizar muito:
             )
 
     async def today_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /hoje - Produtos adicionados hoje"""
+        """Handler para /hoje - O que está bombando Hoje na Shopee"""
         try:
-            today = datetime.now().date().isoformat()
+            today = datetime.now().date().strftime("%d/%m")
+            from ..handlers.shopee_api import create_shopee_client
+            client = create_shopee_client()
+            
+            async with client:
+                # sort_type=2 -> ITEM_SOLD_DESC. Retorna os mais vendidos no período recente
+                result = await client.get_products(is_key_seller=True, sort_type=2, limit=5)
 
-            response = (
-                self.supabase.client.table("products")
-                .select("*")
-                .gte("created_at", f"{today}T00:00:00")
-                .lte("created_at", f"{today}T23:59:59")
-                .eq("is_active", True)
-                .limit(5)
-                .execute()
-            )
+            nodes = result.get("nodes", [])
 
-            products = response.data
-
-            if products:
+            if nodes:
                 await update.message.reply_text(
-                    f"🆕 *Novidades de Hoje ({today}):*", parse_mode="Markdown"
+                    f"🆕 *Estourando de Vendas em {today}:*\n Produtos Oficiais Mais Vendidos AGORA na Shopee:", 
+                    parse_mode="Markdown"
                 )
 
-                for product in products:
+                for node in nodes:
+                    product = self._map_shopee_node_to_product(node)
                     message = self._format_product_message(product)
                     await self._send_formatted_product_reply(update, product, message)
 
                     import asyncio
-
                     await asyncio.sleep(0.5)
             else:
                 await update.message.reply_text(
-                    "📭 Nenhuma novidade hoje ainda. Volte mais tarde!"
+                    "📭 A API não retornou tendências de vendas no momento. Tente /top!"
                 )
 
         except Exception as e:
             logger.error(f"Erro no comando /hoje: {e}")
             await update.message.reply_text(
-                "❌ Erro ao buscar novidades. Tente novamente!"
+                "❌ Erro ao buscar novidades ao vivo."
             )
 
     async def random_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -561,38 +583,59 @@ Ex: /buscar eletrônicos
             logger.error(f"Erro no comando /stats: {e}")
             await update.message.reply_text("📊 Estatísticas indisponíveis no momento.")
 
-    async def promo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /promo - Promoção em destaque com maior desconto"""
-        try:
-            # Seleciona o top 1 por desconto
-            response = (
-                self.supabase.client.table("products")
-                .select("*")
-                .eq("is_active", True)
-                .not_.is_("discount_percentage", "null")
-                .order("discount_percentage", desc=True)
-                .limit(1)
-                .execute()
-            )
+    def _map_shopee_node_to_product(self, node: Dict[str, Any]) -> Dict[str, Any]:
+        """Converte o retorno da API GraphQL Live da Shopee para o formato local Supabase"""
+        price = float(node.get("priceMin", 0))
+        discount = float(node.get("priceDiscountRate", 0))
+        
+        # Calculate original price based on discount rate
+        original_price = price / (1 - (discount / 100)) if discount < 100 else price
+        
+        # Merge seller extra commission with platform commission
+        commission_rate = float(node.get("sellerCommissionRate", 0)) + float(node.get("shopeeCommissionRate", 0))
+        
+        return {
+            "id": node.get("itemId"),
+            "name": node.get("productName", "Produto Shopee (AMS Extra)"),
+            "original_price": original_price,
+            "discount_price": price,
+            "discount_percentage": discount,
+            "affiliate_url": node.get("offerLink"),
+            "image_url": node.get("imageUrl"),
+            "store": "shopee",
+            "category": "Achadinhos Premium",
+            "commission_rate": commission_rate,
+            "is_active": True
+        }
 
-            if response.data:
-                product = response.data[0]
+    async def promo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /promo - Promoção em destaque com maior desconto AO VIVO da Shopee"""
+        try:
+            # Puxa oferta de maior desocnto (sortType: 5 => COMMISSION_DESC, sortType: 3/4 => PREÇO.
+            # Documentação: 5 = COMMISSION_DESC. Relevaremos isso para AMS_OFFER True!
+            from ..handlers.shopee_api import create_shopee_client
+            client = create_shopee_client()
+            
+            async with client:
+                # 5 = Maior Comissão. is_ams_offer = Vendedor pagando super bônus.
+                result = await client.get_products(is_ams_offer=True, sort_type=5, limit=3)
+                
+            nodes = result.get("nodes", [])
+            if nodes:
+                # Ordena pelo maior desconto entre as ofertas luxuosas de afiliados AMS
+                nodes.sort(key=lambda x: float(x.get("priceDiscountRate", 0)), reverse=True)
+                product = self._map_shopee_node_to_product(nodes[0])
+                
                 message = self._format_product_message(product, highlight=True)
                 await self._send_formatted_product_reply(update, product, message)
             else:
-                # Fallback para qualquer produto se não houver discount_percentage preenchido
-                product = await self.supabase.get_random_product()
-                if product:
-                    message = self._format_product_message(product, highlight=True)
-                    await self._send_formatted_product_reply(update, product, message)
-                else:
-                    await update.message.reply_text(
-                        "🔥 Nenhuma promoção em destaque no momento. Fique ligado no grupo!"
-                    )
+                await update.message.reply_text(
+                    "🔥 Nenhuma promoção de Super Comissão disponível agora, mas confira o /cupom para descontos garantidos!"
+                )
 
         except Exception as e:
             logger.error(f"Erro crítico no comando /promo: {e}", exc_info=True)
-            await update.message.reply_text("❌ Tive um problema ao buscar a melhor promo. Tente o comando /cupom enquanto isso!")
+            await update.message.reply_text("❌ A Shopee não está respondendo AGORA. Tente o comando /cupom enquanto isso!")
 
     # ==================== NOVOS COMANDOS DINÂMICOS ====================
 
@@ -685,39 +728,39 @@ Ex: /buscar eletrônicos
             )
 
     async def top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /top - Melhores ofertas do momento"""
+        """Handler para /top - Top 5 Ofertas AMS Live Vendedores Chave da Shopee"""
         try:
-            # Busca top deals
-            top_deals = await self.supabase.get_top_deals(limit=5, min_discount=30)
+            from ..handlers.shopee_api import create_shopee_client
+            client = create_shopee_client()
+            
+            async with client:
+                # is_key_seller garante entrega e qualidade. is_ams garante altíssima comissão.
+                result = await client.get_products(is_key_seller=True, sort_type=5, limit=5)
+                
+            nodes = result.get("nodes", [])
 
-            if top_deals:
+            if nodes:
                 await update.message.reply_text(
-                    "🏆 *TOP OFERTAS DO MOMENTO*\n"
-                    f"Os {len(top_deals)} melhores descontos:",
+                    "🏆 *TOP 5 OFERTAS SHOPEE (AO VIVO)*\n"
+                    f"As maiores comissões e descontos de lojas Oficiais *agora*:",
                     parse_mode="Markdown",
                 )
 
-                for idx, product in enumerate(top_deals, 1):
+                for idx, node in enumerate(nodes, 1):
+                    product = self._map_shopee_node_to_product(node)
                     message = f"*#{idx}* - " + self._format_product_message(product)
                     await self._send_formatted_product_reply(update, product, message)
 
-                    # Atualiza estatísticas
-                    await self.supabase.increment_product_stats(
-                        product["id"], "telegram_send_count"
-                    )
-
-                    # Pequena pausa
                     import asyncio
-
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.8)
             else:
                 await update.message.reply_text(
-                    "😕 Nenhuma oferta especial no momento."
+                    "😕 O radar da Shopee não retornou ofertas super especiais desta vez."
                 )
 
         except Exception as e:
             logger.error(f"Erro no comando /top: {e}")
-            await update.message.reply_text("❌ Erro ao buscar top ofertas.")
+            await update.message.reply_text("❌ Erro ao buscar top ofertas aos vivo da Shopee.")
 
     async def preferencias_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -779,51 +822,52 @@ Configure suas preferências para receber recomendações personalizadas!
     async def recomendar_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
-        """Handler para /recomendar - Produtos recomendados baseados em preferências"""
+        """Handler para /recomendar - Busca produtos Premium na Shopee via Categorias Preferidas"""
         try:
             user = update.effective_user
             telegram_user_id = user.id
 
-            # Salva informações básicas do usuário
             await self.supabase.save_user_preference(
                 telegram_user_id=telegram_user_id,
                 telegram_username=user.username,
                 telegram_first_name=user.first_name,
             )
 
-            # Busca recomendações
-            recommendations = await self.supabase.get_recommended_products(
-                telegram_user_id=telegram_user_id, limit=5
-            )
+            # Busca preferências atuais
+            prefs = await self.supabase.get_user_preferences(telegram_user_id)
+            categories = prefs.get("preferred_categories", [])
+            keyword = categories[0] if categories else "Promoção Oferta AMS"
 
-            if recommendations:
+            from ..handlers.shopee_api import create_shopee_client
+            client = create_shopee_client()
+            
+            async with client:
+                result = await client.get_products(keyword=keyword, is_ams_offer=True, sort_type=1, limit=5)
+
+            nodes = result.get("nodes", [])
+
+            if nodes:
                 await update.message.reply_text(
-                    f"✨ *Recomendações para {user.first_name}*\n"
-                    f"Baseado em suas preferências:",
+                    f"✨ *Recomendações Especiais para {user.first_name}* (Ao Vivo)\n"
+                    f"Filtrado com base no seu perfil ({keyword}):",
                     parse_mode="Markdown",
                 )
 
-                for product in recommendations:
+                for node in nodes:
+                    product = self._map_shopee_node_to_product(node)
                     message = self._format_product_message(product)
                     await self._send_formatted_product_reply(update, product, message)
 
-                    # Atualiza estatísticas
-                    await self.supabase.increment_product_stats(
-                        product["id"], "telegram_send_count"
-                    )
-
-                    # Pequena pausa
                     import asyncio
-
                     await asyncio.sleep(0.5)
 
                 await update.message.reply_text(
-                    "💡 *Dica:* Use /preferencias para ajustar suas preferências!",
+                    "💡 *Dica:* Use /preferencias para ajustar seus interesses e refinar a busca!",
                     parse_mode="Markdown",
                 )
             else:
                 await update.message.reply_text(
-                    f"😕 Nenhuma recomendação disponível no momento.\n"
+                    f"😕 Nenhuma recomendação de alta comissão encontrada para '{keyword}'.\n"
                     f"Continue explorando com /cupom, /top ou /lojas!"
                 )
 
