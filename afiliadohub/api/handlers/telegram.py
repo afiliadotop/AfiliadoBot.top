@@ -343,6 +343,9 @@ Aqui estão os principais comandos para você economizar muito:
                         success = await self._process_ml_link(url, update, is_private=(update.message.chat.type == "private"))
                         if success:
                             return
+                        else:
+                            await update.message.reply_text("❌ O link fornecido é inválido, está quebrado ou não é do Mercado Livre.")
+                            return
                     else:
                         await update.message.reply_text("🔗 O processamento automático de links diretos está disponível apenas para Mercado Livre no momento.")
                         return
