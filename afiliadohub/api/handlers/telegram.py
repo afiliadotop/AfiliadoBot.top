@@ -389,19 +389,40 @@ Aqui estão os principais comandos para você economizar muito:
                 from ..handlers.shopee_api import create_shopee_client
                 client = create_shopee_client()
                 
-                msg = await update.message.reply_text("🔄 Buscando novidades em tempo real na Shopee...", parse_mode="HTML")
+                msg = await update.message.reply_text(f"🔄 Minerando os melhores resultados para '{search_term}' na Shopee...", parse_mode="HTML")
                 
                 async with client:
-                    result = await client.get_products(keyword=search_term, limit=3)
+                    # Credibilidade e Mais Vendidos
+                    result = await client.get_products(keyword=search_term, is_key_seller=True, sort_type=2, limit=15)
                 
                 nodes = result.get("nodes", [])
                 
-                if nodes:
+                # Filtros rigorosos: Desconto >= 10%, Mais Vendidos, Excelentes Avaliações (>= 4.7)
+                valid_nodes = [
+                    n for n in nodes 
+                    if float(n.get("priceDiscountRate", 0)) >= 10
+                    and int(n.get("sales", 0) if n.get("sales") else 0) > 0
+                    and float(n.get("ratingStar", 0) if n.get("ratingStar") else 0) >= 4.7
+                ]
+
+                # Fallback: se o termo for mto específico, relaxa o desconto mas mantém Alta Avaliação (>= 4.5) e vendas reais
+                if not valid_nodes and nodes:
+                    valid_nodes = [
+                        n for n in nodes 
+                        if float(n.get("ratingStar", 0) if n.get("ratingStar") else 0) >= 4.5
+                        and int(n.get("sales", 0) if n.get("sales") else 0) > 0
+                    ]
+                
+                if valid_nodes:
+                    # Ordena por volume de vendas absoluto
+                    valid_nodes.sort(key=lambda x: int(x.get("sales", 0) if x.get("sales") else 0), reverse=True)
+                    top_nodes = valid_nodes[:3]
+
                     await msg.edit_text(
-                        f"🔍 *Achados Fresquinhos para '{search_term}':*", parse_mode="Markdown"
+                        f"🔍 *Top Achados Validados para '{search_term}':*\n(Alta Avaliação, Mais Vendidos e Descontos Reais)", parse_mode="Markdown"
                     )
 
-                    for node in nodes:
+                    for node in top_nodes:
                         product = self._map_shopee_node_to_product(node)
                         message = self._format_product_message(product)
                         await self._send_formatted_product_reply(update, product, message)
@@ -411,19 +432,17 @@ Aqui estão os principais comandos para você economizar muito:
 
                     # Botões de Filtro VIP Shopee
                     keyboard = [
-                        [InlineKeyboardButton("🔥 Mais Vendidos", callback_data=f"shopee_filter_sales|{search_term[:40]}")],
-                        [InlineKeyboardButton("💸 Menor Preço", callback_data=f"shopee_filter_price|{search_term[:40]}")],
-                        [InlineKeyboardButton("✨ Achadinhos Alta Comissão", callback_data=f"shopee_filter_ams|{search_term[:40]}")]
+                        [InlineKeyboardButton("🔥 Mais Detalhes na Shopee", url=f"https://shopee.com.br/search?keyword={search_term.replace(' ', '%20')}")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     await update.message.reply_text(
-                        "🎯 *Refinar Busca:*", 
+                        "🎯 *Não encontrou o que queria?*", 
                         parse_mode="Markdown", 
                         reply_markup=reply_markup
                     )
                 else:
                     await msg.edit_text(
-                        f"😕 Poxa, nenhum produto de alta qualidade encontrado na Shopee para '{search_term}' agora."
+                        f"😕 Poxa, não encontrei nenhum produto de alta qualidade validado (vendas + boas avaliações) na Shopee para '{search_term}'.\n\nTente buscar com outras palavras!"
                     )
                     
             except Exception as e:
@@ -649,23 +668,28 @@ Ex: /buscar eletrônicos
         }
 
     async def promo_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /promo - Promoção em destaque com maior desconto AO VIVO da Shopee"""
+        """Handler para /promo - Promoção em destaque com maior desconto e vendas reias AO VIVO da Shopee"""
         await self._apply_reaction(update, "🤩")
         try:
-            # Puxa oferta de maior desocnto (sortType: 5 => COMMISSION_DESC, sortType: 3/4 => PREÇO.
-            # Documentação: 5 = COMMISSION_DESC. Relevaremos isso para AMS_OFFER True!
             from ..handlers.shopee_api import create_shopee_client
             client = create_shopee_client()
             
             async with client:
-                # 5 = Maior Comissão. is_ams_offer = Vendedor pagando super bônus.
-                result = await client.get_products(is_ams_offer=True, sort_type=5, limit=3)
+                # Credibilidade: Lojas oficiais/indicadas (is_key_seller) e Mais Vendidos (sort_type=2)
+                result = await client.get_products(is_key_seller=True, sort_type=2, limit=15)
                 
             nodes = result.get("nodes", [])
-            if nodes:
-                # Ordena pelo maior desconto entre as ofertas luxuosas de afiliados AMS
-                nodes.sort(key=lambda x: float(x.get("priceDiscountRate", 0)), reverse=True)
-                product = self._map_shopee_node_to_product(nodes[0])
+            # Filtro de Qualidade: Ofertas que realmente têm bom desconto e volume de vendas
+            valid_nodes = [
+                n for n in nodes 
+                if float(n.get("priceDiscountRate", 0)) >= 15
+                and int(n.get("sales", 0) if n.get("sales") else 0) > 10
+            ]
+            
+            if valid_nodes:
+                # Dentre os mais vendidos com bom desconto, pega o que tem maior desconto
+                valid_nodes.sort(key=lambda x: float(x.get("priceDiscountRate", 0)), reverse=True)
+                product = self._map_shopee_node_to_product(valid_nodes[0])
                 
                 message = self._format_product_message(product, highlight=True)
                 await self._send_formatted_product_reply(update, product, message)
@@ -675,7 +699,7 @@ Ex: /buscar eletrônicos
                 await self._post_product_story(context.bot, chat_to_post, product)
             else:
                 await update.message.reply_text(
-                    "🔥 Nenhuma promoção de Super Comissão disponível agora, mas confira o /cupom para descontos garantidos!"
+                    "🔥 Nenhuma mega promoção verificada disponível agora, busque por categorias ou use o /cupom para descontos garantidos!"
                 )
 
         except Exception as e:
@@ -773,26 +797,35 @@ Ex: /buscar eletrônicos
             )
 
     async def top_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /top - Top 5 Ofertas AMS Live Vendedores Chave da Shopee"""
+        """Handler para /top - Top 5 Ofertas Reais de Mais Vendidos da Shopee"""
         await self._apply_reaction(update, "🏆")
         try:
             from ..handlers.shopee_api import create_shopee_client
             client = create_shopee_client()
             
             async with client:
-                # is_key_seller garante entrega e qualidade. is_ams garante altíssima comissão.
-                result = await client.get_products(is_key_seller=True, sort_type=5, limit=5)
+                # Credibilidade e Confiança: Lojas oficiais, sort by vendas!
+                result = await client.get_products(is_key_seller=True, sort_type=2, limit=20)
                 
             nodes = result.get("nodes", [])
 
-            if nodes:
+            valid_nodes = [
+                n for n in nodes 
+                if float(n.get("priceDiscountRate", 0)) >= 10
+            ]
+
+            if valid_nodes:
+                # Re-ordena pelas vendas no caso de a ordem ter bagunçado e pega os 5 melhores
+                valid_nodes.sort(key=lambda x: int(x.get("sales", 0) if x.get("sales") else 0), reverse=True)
+                top_nodes = valid_nodes[:5]
+
                 await update.message.reply_text(
-                    "🏆 *TOP 5 OFERTAS SHOPEE (AO VIVO)*\n"
-                    f"As maiores comissões e descontos de lojas Oficiais *agora*:",
+                    "🏆 *TOP 5 ACHADINHOS REAIS (AO VIVO)*\n"
+                    f"Os favoritos com mais vendas e descontos *verdadeiros* nas Lojas Oficiais:",
                     parse_mode="Markdown",
                 )
 
-                for idx, node in enumerate(nodes, 1):
+                for idx, node in enumerate(top_nodes, 1):
                     product = self._map_shopee_node_to_product(node)
                     message = f"*#{idx}* - " + self._format_product_message(product)
                     await self._send_formatted_product_reply(update, product, message)
