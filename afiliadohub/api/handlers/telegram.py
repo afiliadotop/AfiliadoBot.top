@@ -255,66 +255,33 @@ Aqui estão os principais comandos para você economizar muito:
         await update.message.reply_text(help_text, parse_mode="HTML")
 
     async def cupom_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler para /cupom — Central de Benefícios VIP Shopee com 4 botões rastreáveis."""
+        """Handler para /cupom — Central de Benefícios VIP Shopee com links rastreáveis fixos."""
         await self._apply_reaction(update, "🤩")
         try:
-            from ..handlers.shopee_api import create_shopee_client
-            client = create_shopee_client()
-
-            processing_msg = await update.message.reply_text("🔄 Conectando com a Central de Benefícios Shopee...")
-
-            # URLs base — página oficial Shopee, existem independente de API
-            cupons_url = "https://shopee.com.br/m/cupons-diarios"
-            frete_url = "https://shopee.com.br/m/freteGratis"
-            mega_url = "https://shopee.com.br/m/megasale"
-            new_users_url = "https://shopee.com.br/m/new-user-exclusive"
-
-            # Tenta buscar coleção ativa via API (shopeeOfferV2) para enriquecer Mega Sale
-            try:
-                async with client:
-                    offers_result = await client.get_shopee_offers(sort_type=2, limit=10)
-                    offers = (offers_result or {}).get("nodes", [])
-                    for offer in offers:
-                        if offer.get("offerType") == 1 and offer.get("offerLink"):
-                            mega_url = offer["offerLink"]
-                            break
-            except Exception as e:
-                logger.warning(f"[Cupom] Coleções não disponíveis: {e}")
-
-            # Gera short link rastreável para Cupons do Dia
-            try:
-                async with client:
-                    tracked = await client.generate_short_link(
-                        origin_url=cupons_url,
-                        sub_ids=["telegram", "cupom", "vip"]
-                    )
-                    if tracked:
-                        cupons_url = tracked
-            except Exception as e:
-                logger.warning(f"[Cupom] Short link não gerado: {e}")
+            # Links rastreáveis próprios — sempre válidos, sem depender de API ou campanha
+            CUPONS_URL  = "https://s.shopee.com.br/30kEKr2OAA"  # Cupons Diários
+            FRETE_URL   = "https://s.shopee.com.br/4fsSJyLqi6"  # Frete Grátis
+            OFERTAS_URL = "https://s.shopee.com.br/4AwBj7QT3W"  # Super Ofertas
 
             message = (
                 "🎟️ <b>CENTRAL DE BENEFÍCIOS VIP SHOPEE</b>\n\n"
                 "✨ Os melhores benefícios do momento, renovados diariamente:\n\n"
-                "🎁 <b>Cupons do Dia</b> — Ative antes de esgotar\n"
+                "🎁 <b>Cupons Diários</b> — Ative antes de esgotar\n"
                 "📦 <b>Frete Grátis</b> — Sem mínimo de compra\n"
-                "🔥 <b>Mega Sale</b> — Campanhas exclusivas ativas\n"
-                "👋 <b>Novo Usuário</b> — Desconto extra na 1ª compra\n\n"
+                "🔥 <b>Super Ofertas</b> — As maiores promoções ativas agora\n\n"
                 "<i>⚠️ Benefícios por tempo limitado. Clique rápido!</i>"
             )
             keyboard = [
                 [
-                    InlineKeyboardButton("🎟️ Cupons do Dia", url=cupons_url),
-                    InlineKeyboardButton("📦 Frete Grátis", url=frete_url),
+                    InlineKeyboardButton("🎁 Cupons Diários", url=CUPONS_URL),
+                    InlineKeyboardButton("📦 Frete Grátis", url=FRETE_URL),
                 ],
                 [
-                    InlineKeyboardButton("🔥 Mega Sale", url=mega_url),
-                    InlineKeyboardButton("👋 Novo Usuário", url=new_users_url),
+                    InlineKeyboardButton("🔥 Super Ofertas", url=OFERTAS_URL),
                 ],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await processing_msg.delete()
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
 
         except Exception as e:
