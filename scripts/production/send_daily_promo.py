@@ -10,8 +10,8 @@ Anti-manopla: exige vendas reais + rating alto, não só % de desconto.
 import os
 import sys
 import math
+import html as html_module
 import asyncio
-import hashlib
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -31,8 +31,8 @@ if not TELEGRAM_BOT_TOKEN:
     sys.exit(1)
 
 # ──────────────────────────────────────────────────────────────
-# ROTAÇÃO DE KEYWORDS — cada horário tem categorias diferentes
-# Garante que 10h e 18h nunca postem os mesmos produtos
+# ROTAÇÃO DE KEYWORDS — alta conversão, produtos cotidianos
+# Manhã: tech + estilo de vida | Tarde: casa + beleza + games
 # ──────────────────────────────────────────────────────────────
 
 MORNING_KEYWORDS = [
@@ -41,18 +41,18 @@ MORNING_KEYWORDS = [
     "carregador rápido",
     "tênis esportivo",
     "mochila",
-    "kindle livro",
     "câmera ação",
+    "tablet android",
 ]
 
 EVENING_KEYWORDS = [
-    "perfume importado",
     "panela air fryer",
-    "camiseta",
+    "perfume feminino",
     "suplemento whey",
-    "jogo console",
-    "calçado feminino",
     "mouse gamer",
+    "calçado feminino",
+    "kit skincare",
+    "jogo playstation",
 ]
 
 
@@ -70,7 +70,6 @@ def is_morning_slot() -> bool:
 def real_discount_score(node: dict) -> float:
     """
     Score anti-manopla: penaliza produtos com poucas vendas.
-    Vendedores que inflam preço têm poucas vendas reais (compradores percebem).
     score = desconto × log(vendas + 1)
     """
     discount = float(node.get("priceDiscountRate", 0))
@@ -79,60 +78,86 @@ def real_discount_score(node: dict) -> float:
 
 
 def format_message(node: dict, keyword: str) -> str:
-    """Formata mensagem AIDA com HTML para o canal."""
-    name = node.get("itemName", "Produto Shopee")[:80]
-    price = float(node.get("priceMin", 0)) / 100_000
-    original = float(node.get("priceBeforeDiscount", 0)) / 100_000
-    discount = int(node.get("priceDiscountRate", 0))
+    """Formata mensagem AIDA com HTML para o canal (alta conversão)."""
+    # Campos corretos da productOfferV2 API
+    name = html_module.escape(node.get("productName", "Produto Shopee")[:80])
+    # priceMin é string em reais: "45.99" → float
+    price = float(node.get("priceMin") or 0)
+    discount = int(node.get("priceDiscountRate") or 0)
     sales = int(node.get("sales") or 0)
     rating = float(node.get("ratingStar") or 0)
-    link = node.get("offerLink") or node.get("itemUrl", "https://shopee.com.br")
+    shop_type = node.get("shopType") or []
+    link = node.get("offerLink") or node.get("productLink", "https://shopee.com.br")
     short = node.get("shortLink") or link
 
-    # Headline
+    # Calcula preço original a partir do desconto
+    original = 0.0
+    if discount > 0 and price > 0:
+        original = price / (1 - discount / 100)
+
+    # Badge de loja para prova social
+    if isinstance(shop_type, list):
+        is_mall = 1 in shop_type
+        is_preferred = 2 in shop_type or 4 in shop_type
+    else:
+        is_mall = shop_type == 1
+        is_preferred = shop_type in (2, 4)
+
+    badge = "👑 Shopee Mall" if is_mall else ("⭐ Loja Preferida" if is_preferred else "🏬 Vendedor Shopee")
+
+    # Headline AIDA — Atenção
     if discount >= 40:
         headline = f"🚨 <b>RELÂMPAGO: {discount}% OFF REAL!</b>"
     elif discount >= 20:
-        headline = f"🔥 <b>OFERTA VERIFICADA: {discount}% OFF</b>"
+        headline = f"🔥 <b>OFERTA VERIFICADA: -{discount}% OFF</b>"
     else:
         headline = f"✨ <b>ACHADINHO VALIDADO SHOPEE</b>"
 
     msg = f"{headline}\n\n"
+    # Produto com link clicável
     msg += f"📦 <b><a href='{short}'>{name}</a></b>\n\n"
 
+    # Preços — desconto visível
     if original > price > 0:
         savings = original - price
         msg += f"❌ <s>De R$ {original:.2f}</s>\n"
         msg += f"🔥 <b>POR APENAS R$ {price:.2f}</b> 😱\n"
-        msg += f"💸 <b>Economia: R$ {savings:.2f}</b>\n"
+        msg += f"💸 <b>Você economiza R$ {savings:.2f}!</b>\n"
     elif price > 0:
         msg += f"💰 <b>R$ {price:.2f}</b>\n"
 
+    msg += "\n"
+
+    # Prova social (autoridade + vendas)
     if rating > 0:
-        msg += f"⭐ {rating}/5"
+        msg += f"{badge} | ⭐ {rating:.1f}/5"
         if sales > 0:
-            msg += f" · {sales:,} vendidos"
+            msg += f" · {sales:,} compradores"
         msg += "\n"
 
     msg += "\n"
-    msg += f"✅ <i>Desconto real verificado — {sales:,} compradores confirmam o preço!</i>\n\n"
-    msg += f"🛒 <b>COMPRE AGORA:</b>\n"
-    msg += f"👉 <b><a href='{short}'>CLIQUE PARA GARANTIR</a></b>\n\n"
-    msg += f"⚠️ <i>Preço pode subir a qualquer momento!</i>\n\n"
-    msg += f"#Shopee #Oferta{discount}OFF #Achadinho #AfiliadoTop"
+    msg += f"✅ <i>Desconto real verificado — {sales:,} pessoas já compraram!</i>\n\n"
+    msg += f"🛒 <b>COMPRE AGORA ANTES DE ESGOTAR:</b>\n"
+    msg += f"👉 <b><a href='{short}'>CLIQUE PARA GARANTIR ↗</a></b>\n\n"
+    msg += f"⏳ <i>Preço pode subir a qualquer momento!</i>\n\n"
+
+    # Hashtags para descoberta
+    tag = keyword.replace(" ", "").title()
+    msg += f"#Shopee #Achadinho #Oferta{discount}OFF #{tag} #AfiliadoTop"
 
     return msg
 
 
 async def fetch_live_products(keyword: str) -> list:
-    """Busca produtos ao vivo na API Shopee com filtro anti-manopla."""
-    from afiliadohub.api.handlers.shopee_api import create_shopee_client
+    """Busca produtos ao vivo na API Shopee com filtros de qualidade."""
+    # Import correto: create_shopee_client está em utils.shopee_client
+    from afiliadohub.api.utils.shopee_client import create_shopee_client
 
     client = create_shopee_client()
     candidates = []
 
     async with client:
-        # Tenta primeiro com key_seller + AMS (mais confiável)
+        # Prioridade 1: vendedores chave + AMS + ordenado por mais vendidos
         result = await client.get_products(
             keyword=keyword,
             is_key_seller=True,
@@ -142,10 +167,10 @@ async def fetch_live_products(keyword: str) -> list:
         )
         nodes = result.get("nodes", []) if result else []
 
-        # Filtro anti-manopla principal
+        # Filtro anti-manopla principal: desconto real + vendas + rating
         filtered = [
             n for n in nodes
-            if float(n.get("priceDiscountRate", 0)) >= 15
+            if float(n.get("priceDiscountRate") or 0) >= 15
             and int(n.get("sales") or 0) >= 20
             and float(n.get("ratingStar") or 0) >= 4.3
         ]
@@ -153,23 +178,32 @@ async def fetch_live_products(keyword: str) -> list:
         if filtered:
             candidates = filtered
         else:
-            # Fallback: relaxa filtros mas mantém qualidade mínima
+            # Fallback: busca mais ampla, filtros mínimos de qualidade
             result2 = await client.get_products(
                 keyword=keyword,
                 sort_type=2,
-                limit=20,
+                limit=30,
             )
             nodes2 = result2.get("nodes", []) if result2 else []
             candidates = [
                 n for n in nodes2
-                if float(n.get("priceDiscountRate", 0)) >= 5
+                if float(n.get("priceDiscountRate") or 0) >= 5
                 and int(n.get("sales") or 0) >= 5
                 and float(n.get("ratingStar") or 0) >= 4.0
             ] or nodes2[:5]
 
-    # Ordena pelo score anti-manopla
-    candidates.sort(key=real_discount_score, reverse=True)
-    return candidates
+        # Gera shortLinks para os top 3 antes de fechar a sessão
+        top_candidates = sorted(candidates, key=real_discount_score, reverse=True)[:3]
+        for node in top_candidates:
+            offer_url = node.get("offerLink") or node.get("productLink")
+            if offer_url and not node.get("shortLink"):
+                short = await client.generate_short_link(offer_url)
+                if short:
+                    node["shortLink"] = short
+
+    # Ordena pelo score anti-manopla (desconto × log(vendas))
+    top_candidates.sort(key=real_discount_score, reverse=True)
+    return top_candidates
 
 
 async def send_daily_promotions():
@@ -177,7 +211,6 @@ async def send_daily_promotions():
     bot = Bot(TELEGRAM_BOT_TOKEN)
     now_utc = datetime.now(timezone.utc)
 
-    # Determina slot e keyword do lançamento
     morning = is_morning_slot()
     keywords_pool = MORNING_KEYWORDS if morning else EVENING_KEYWORDS
     keyword = pick_keyword(keywords_pool)
@@ -190,10 +223,17 @@ async def send_daily_promotions():
     try:
         nodes = await fetch_live_products(keyword)
     except Exception as e:
-        print(f"[ERRO] Falha ao buscar produtos da Shopee: {e}")
+        print(f"[ERRO] Falha ao buscar produtos da Shopee: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         await bot.send_message(
             chat_id=TELEGRAM_CHANNEL_ID,
-            text=f"⚠️ Erro temporário na Shopee API. Tentando novamente no próximo lançamento.",
+            text=(
+                f"⚠️ <b>Erro temporário na Shopee API.</b>\n"
+                f"Código: <code>{type(e).__name__}</code>\n"
+                f"Tentaremos novamente no próximo lançamento."
+            ),
+            parse_mode="HTML",
         )
         return
 
@@ -201,19 +241,18 @@ async def send_daily_promotions():
         print("[AVISO] Nenhum produto encontrado com os filtros de qualidade.")
         return
 
-    # Envia até 3 produtos
-    top = nodes[:3]
-    print(f"Enviando {len(top)} produto(s) para o canal...\n")
+    print(f"Enviando {len(nodes)} produto(s) para o canal...\n")
 
-    for idx, node in enumerate(top, 1):
+    for idx, node in enumerate(nodes, 1):
         caption = format_message(node, keyword)
-        image_url = node.get("imageUrl") or node.get("image")
+        image_url = node.get("imageUrl")
         link = node.get("shortLink") or node.get("offerLink") or "https://shopee.com.br"
-        name = node.get("itemName", "Ver Produto")[:30]
-        discount = int(node.get("priceDiscountRate", 0))
+        name = node.get("productName", "Ver Produto")[:30]
+        discount = int(node.get("priceDiscountRate") or 0)
 
+        btn_label = f"🛒 GARANTIR COM {discount}% OFF" if discount > 0 else "🛒 VER PRODUTO"
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"🛒 COMPRAR COM {discount}% OFF", url=link)],
+            [InlineKeyboardButton(btn_label, url=link)],
         ])
 
         try:
@@ -225,7 +264,7 @@ async def send_daily_promotions():
                     parse_mode="HTML",
                     reply_markup=keyboard,
                 )
-                print(f"  [{idx}/{len(top)}] ✅ FOTO enviada: {name}...")
+                print(f"  [{idx}/{len(nodes)}] ✅ FOTO enviada: {name}...")
             else:
                 await bot.send_message(
                     chat_id=TELEGRAM_CHANNEL_ID,
@@ -234,16 +273,17 @@ async def send_daily_promotions():
                     disable_web_page_preview=False,
                     reply_markup=keyboard,
                 )
-                print(f"  [{idx}/{len(top)}] ✅ TEXTO enviado: {name}...")
+                print(f"  [{idx}/{len(nodes)}] ✅ TEXTO enviado: {name}...")
 
-            if idx < len(top):
+            if idx < len(nodes):
                 await asyncio.sleep(4)  # Pausa entre produtos
 
         except Exception as e:
-            print(f"  [{idx}/{len(top)}] ❌ Erro ao enviar: {e}")
+            print(f"  [{idx}/{len(nodes)}] ❌ Erro ao enviar: {e}")
 
-    print(f"\n✅ Lançamento concluído! {len(top)} produtos enviados.")
-    print(f"Próxima keyword disponível: '{pick_keyword(keywords_pool)}'")
+    print(f"\n✅ Lançamento concluído! {len(nodes)} produtos enviados.")
+    next_kw = pick_keyword(keywords_pool)
+    print(f"Próxima keyword disponível: '{next_kw}'")
 
 
 if __name__ == "__main__":
