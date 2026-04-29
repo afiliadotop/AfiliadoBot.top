@@ -167,6 +167,7 @@ class TelegramBot:
 
         # Comandos admin
         self.application.add_handler(CommandHandler("stats", self.stats_command))
+        self.application.add_handler(CommandHandler("baixar", self.baixar_command))
 
         # Handler para novos membros (Boas-vindas AIDA)
         self.application.add_handler(
@@ -546,6 +547,91 @@ Ex: /buscar eletrônicos
         except Exception as e:
             logger.error(f"Erro no comando /categorias: {e}")
             await update.message.reply_text("❌ Erro ao buscar categorias.")
+
+    async def baixar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /baixar <url> — Download de vídeo de produto (somente admins)."""
+        import tempfile
+        from ..services.video_downloader import download_video, cleanup, _is_url_supported
+
+        user_id = str(update.effective_user.id)
+        admin_ids = str(os.getenv("ADMIN_IDS", ""))
+
+        if user_id not in admin_ids:
+            await update.message.reply_text("⛔ Apenas admins podem usar este comando.")
+            return
+
+        if not context.args:
+            await update.message.reply_text(
+                "🎬 <b>Como usar:</b>\n"
+                "/baixar &lt;link do produto&gt;\n\n"
+                "<b>Sites suportados:</b>\n"
+                "• Shopee (shopee.com.br)\n"
+                "• Instagram\n"
+                "• TikTok\n"
+                "• YouTube\n"
+                "• Twitter/X\n"
+                "• Kwai\n\n"
+                "<i>O vídeo será enviado limpo, sem marca d'água.</i>",
+                parse_mode="HTML",
+            )
+            return
+
+        url = context.args[0].strip()
+
+        if not url.startswith(("http://", "https://")):
+            await update.message.reply_text("❌ URL inválida. Envie um link completo começando com https://")
+            return
+
+        if not _is_url_supported(url):
+            await update.message.reply_text(
+                "⚠️ Site não reconhecido.\n"
+                "Use /baixar para ver os sites suportados."
+            )
+            return
+
+        status_msg = await update.message.reply_text(
+            "⏳ <b>Baixando vídeo...</b>\n"
+            "<i>Isso pode levar alguns segundos.</i>",
+            parse_mode="HTML",
+        )
+
+        filepath = None
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                filepath = await download_video(url, tmp_dir)
+
+                if not filepath:
+                    await status_msg.edit_text(
+                        "❌ <b>Não foi possível baixar o vídeo.</b>\n\n"
+                        "Possíveis motivos:\n"
+                        "• O produto não tem vídeo\n"
+                        "• O vídeo é maior que 50MB\n"
+                        "• O link expirou ou é inválido",
+                        parse_mode="HTML",
+                    )
+                    return
+
+                await status_msg.edit_text("📤 <b>Enviando vídeo...</b>", parse_mode="HTML")
+
+                with open(filepath, "rb") as video_file:
+                    await update.message.reply_video(
+                        video=video_file,
+                        caption=(
+                            f"🎬 <b>Vídeo baixado com sucesso!</b>\n"
+                            f"🔗 <code>{url[:60]}{'...' if len(url) > 60 else ''}</code>"
+                        ),
+                        parse_mode="HTML",
+                        supports_streaming=True,
+                    )
+
+                await status_msg.delete()
+                logger.info(f"[/baixar] Admin {user_id} baixou vídeo: {url}")
+
+        except Exception as e:
+            logger.error(f"[/baixar] Erro inesperado: {e}", exc_info=True)
+            await status_msg.edit_text(
+                "❌ Erro interno ao processar o vídeo. Tente novamente."
+            )
 
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para /stats - Estatísticas do bot"""

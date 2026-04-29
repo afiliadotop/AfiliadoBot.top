@@ -20,6 +20,8 @@ services:
       # Telegram
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: ADMIN_IDS
+        sync: false
       # Mercado Livre
       - key: ML_APP_ID
         sync: false
