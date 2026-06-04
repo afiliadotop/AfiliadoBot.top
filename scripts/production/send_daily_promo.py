@@ -26,33 +26,41 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID", "-1002499912192")
 
+# Import topic router (requires afiliadohub on PYTHONPATH)
+try:
+    from afiliadohub.api.utils.topic_router import get_thread_id, detect_category
+    TOPICS_ENABLED = True
+except ImportError:
+    TOPICS_ENABLED = False
+    print("[AVISO] topic_router não carregado — mensagens irão para o grupo geral.")
+
 if not TELEGRAM_BOT_TOKEN:
     print("[CRÍTICO] TELEGRAM_BOT_TOKEN não encontrado!")
     sys.exit(1)
 
 # ──────────────────────────────────────────────────────────────
-# ROTAÇÃO DE KEYWORDS — alta conversão, produtos cotidianos
-# Manhã: tech + estilo de vida | Tarde: casa + beleza + games
+# ROTAÇÃO DE KEYWORDS — tema do grupo: moda, beleza, bijuterias
+# Manhã: roupas + bijuterias | Tarde: beleza + geral alta conversão
 # ──────────────────────────────────────────────────────────────
 
 MORNING_KEYWORDS = [
-    "fone bluetooth",
-    "smartwatch",
-    "carregador rápido",
-    "tênis esportivo",
-    "mochila",
-    "câmera ação",
-    "tablet android",
+    "vestido feminino",
+    "conjunto feminino",
+    "blusa feminina",
+    "calça feminina",
+    "sandália feminina",
+    "tênis feminino",
+    "bolsa feminina",
 ]
 
 EVENING_KEYWORDS = [
-    "panela air fryer",
-    "perfume feminino",
-    "suplemento whey",
-    "mouse gamer",
-    "calçado feminino",
     "kit skincare",
-    "jogo playstation",
+    "perfume feminino",
+    "brinco",
+    "colar feminino",
+    "pulseira",
+    "maquiagem",
+    "hidratante corporal",
 ]
 
 
@@ -249,29 +257,43 @@ async def send_daily_promotions():
         link = node.get("shortLink") or node.get("offerLink") or "https://shopee.com.br"
         name = node.get("productName", "Ver Produto")[:30]
         discount = int(node.get("priceDiscountRate") or 0)
+        product_name = node.get("productName", "")
 
         btn_label = f"🛒 GARANTIR COM {discount}% OFF" if discount > 0 else "🛒 VER PRODUTO"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(btn_label, url=link)],
         ])
 
+        # Detecta o tópico correto para este produto
+        thread_id = None
+        if TOPICS_ENABLED:
+            thread_id = get_thread_id(
+                product_name=product_name,
+                keyword=keyword,
+            )
+            topic_label = f"thread={thread_id}" if thread_id else "geral"
+            print(f"  [{idx}/{len(nodes)}] Tópico detectado: {topic_label} | Keyword: '{keyword}'")
+
+        send_kwargs = dict(
+            chat_id=TELEGRAM_CHANNEL_ID,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+            **({"message_thread_id": thread_id} if thread_id else {}),
+        )
+
         try:
             if image_url:
                 await bot.send_photo(
-                    chat_id=TELEGRAM_CHANNEL_ID,
                     photo=image_url,
                     caption=caption,
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
+                    **send_kwargs,
                 )
                 print(f"  [{idx}/{len(nodes)}] ✅ FOTO enviada: {name}...")
             else:
                 await bot.send_message(
-                    chat_id=TELEGRAM_CHANNEL_ID,
                     text=caption,
-                    parse_mode="HTML",
                     disable_web_page_preview=False,
-                    reply_markup=keyboard,
+                    **send_kwargs,
                 )
                 print(f"  [{idx}/{len(nodes)}] ✅ TEXTO enviado: {name}...")
 

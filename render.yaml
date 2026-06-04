@@ -22,6 +22,21 @@ services:
         sync: false
       - key: ADMIN_IDS
         sync: false
+      # Tópicos do grupo (Forum thread IDs — use /topicos no bot para descobrir)
+      - key: TOPIC_ROUPAS
+        sync: false
+      - key: TOPIC_BIJUTERIAS
+        sync: false
+      - key: TOPIC_BELEZA
+        sync: false
+      - key: TOPIC_CUPONS
+        sync: false
+      - key: TOPIC_VIDEOS
+        sync: false
+      - key: TOPIC_NAMORADOS
+        sync: false
+      - key: TOPIC_GERAL
+        sync: false
       # Mercado Livre
       - key: ML_APP_ID
         sync: false

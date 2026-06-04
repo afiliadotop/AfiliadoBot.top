@@ -168,6 +168,7 @@ class TelegramBot:
         # Comandos admin
         self.application.add_handler(CommandHandler("stats", self.stats_command))
         self.application.add_handler(CommandHandler("baixar", self.baixar_command))
+        self.application.add_handler(CommandHandler("topicos", self.topicos_command))
 
         # Handler para novos membros (Boas-vindas AIDA)
         self.application.add_handler(
@@ -1671,19 +1672,81 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
         message = headline + interest + desire + action + meta
         return message
 
+    async def topicos_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /topicos — lista thread IDs de todos os tópicos do grupo (somente admins)."""
+        user_id = str(update.effective_user.id)
+        admin_ids = str(os.getenv("ADMIN_IDS", ""))
+
+        if user_id not in admin_ids:
+            await update.message.reply_text("⛔ Apenas admins podem usar este comando.")
+            return
+
+        chat = update.effective_chat
+
+        # Verifica se o grupo tem tópicos habilitados
+        if not getattr(chat, "is_forum", False):
+            await update.message.reply_text(
+                "❌ Este grupo não tem tópicos (Forum) habilitados.\n"
+                "Ative em: Configurações do Grupo → Tópicos."
+            )
+            return
+
+        from ..utils.topic_router import TOPIC_IDS
+
+        configured = {k: v for k, v in TOPIC_IDS.items() if v is not None}
+        missing = {k: v for k, v in TOPIC_IDS.items() if v is None}
+
+        lines = [
+            "🗂️ <b>Configuração de Tópicos — AfiliadoTop</b>\n",
+            "<b>Como descobrir o thread_id de um tópico:</b>",
+            "1. Clique no tópico",
+            "2. Copie o link (ex: t.me/grupo/<b>123</b>)",
+            "3. O número no final é o thread_id\n",
+        ]
+
+        if configured:
+            lines.append("✅ <b>Tópicos configurados:</b>")
+            topic_emojis = {
+                "roupas": "👗", "bijuterias": "💎", "beleza": "💆",
+                "cupons": "🎟️", "videos": "🎬", "namorados": "💝", "geral": "💬",
+            }
+            for k, v in configured.items():
+                emoji = topic_emojis.get(k, "📌")
+                lines.append(f"{emoji} {k}: <code>{v}</code>")
+            lines.append("")
+
+        if missing:
+            lines.append("⚠️ <b>Tópicos NÃO configurados (env vars):</b>")
+            env_map = {
+                "roupas": "TOPIC_ROUPAS", "bijuterias": "TOPIC_BIJUTERIAS",
+                "beleza": "TOPIC_BELEZA", "cupons": "TOPIC_CUPONS",
+                "videos": "TOPIC_VIDEOS", "namorados": "TOPIC_NAMORADOS",
+                "geral": "TOPIC_GERAL",
+            }
+            for k in missing:
+                lines.append(f"• <code>{env_map.get(k, k.upper())}</code> = {k}")
+            lines.append("")
+            lines.append("<i>Adicione essas variáveis no Render Dashboard → Environment.</i>")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
     async def send_product_to_channel(
-        self, chat_id: Optional[str], product: Dict[str, Any]
+        self,
+        chat_id: Optional[str],
+        product: Dict[str, Any],
+        message_thread_id: Optional[int] = None,
+        keyword: str = "",
     ):
-        """Envia produto para um canal/grupo utilizando botão inline e imagem"""
+        """Envia produto para um canal/grupo, roteando para o tópico correto se configurado."""
         try:
+            from ..utils.topic_router import get_thread_id, detect_category
+
             # Garante que temos um token
             if not self.token:
                 self.token = telegram_settings.get_bot_token()
 
             if not self.token:
-                logger.error(
-                    "[TELEGRAM] Impossível enviar mensagem: Token não configurado"
-                )
+                logger.error("[TELEGRAM] Impossível enviar mensagem: Token não configurado")
                 return False
 
             # Se chat_id não informado, tenta pegar do banco
@@ -1691,50 +1754,62 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
                 chat_id = telegram_settings.get_group_chat_id()
 
             if not chat_id:
-                logger.error(
-                    "[TELEGRAM] Impossível enviar mensagem: Chat ID não configurado"
-                )
+                logger.error("[TELEGRAM] Impossível enviar mensagem: Chat ID não configurado")
                 return False
 
-            bot = self.application.bot if self.application else Bot(self.token)
+            # Auto-detecta o tópico se não foi passado explicitamente
+            if message_thread_id is None:
+                message_thread_id = get_thread_id(
+                    product_name=product.get("name", ""),
+                    keyword=keyword,
+                    product_category=product.get("category", ""),
+                )
 
+            bot = self.application.bot if self.application else Bot(self.token)
             message = self._format_product_message(product)
             markup = self._build_product_reply_markup(product)
-            image_url = product.get('image_url')
+            image_url = product.get("image_url")
+
+            send_kwargs = dict(
+                chat_id=chat_id,
+                parse_mode="HTML",
+                reply_markup=markup,
+                **({"message_thread_id": message_thread_id} if message_thread_id else {}),
+            )
 
             if image_url:
                 try:
                     await bot.send_photo(
-                        chat_id=chat_id,
                         photo=image_url,
                         caption=message,
-                        parse_mode="HTML",
-                        reply_markup=markup,
+                        **send_kwargs,
                     )
                 except Exception as e:
-                    logger.warning(f"[TELEGRAM] Erro no send_photo do canal, tentando texto de fallback: {e}")
+                    logger.warning(f"[TELEGRAM] Erro no send_photo, fallback texto: {e}")
                     await bot.send_message(
-                        chat_id=chat_id,
                         text=message,
-                        parse_mode="HTML",
                         disable_web_page_preview=False,
-                        reply_markup=markup,
+                        **send_kwargs,
                     )
             else:
                 await bot.send_message(
-                    chat_id=chat_id,
                     text=message,
-                    parse_mode="HTML",
                     disable_web_page_preview=False,
-                    reply_markup=markup,
+                    **send_kwargs,
                 )
 
             # Atualiza estatísticas
-            await self.supabase.increment_product_stats(
-                product["id"], "telegram_send_count"
-            )
+            await self.supabase.increment_product_stats(product["id"], "telegram_send_count")
 
-            logger.info(f"[OK] Produto {product['id']} enviado para {chat_id}")
+            category = detect_category(
+                product_name=product.get("name", ""),
+                keyword=keyword,
+                product_category=product.get("category", ""),
+            )
+            logger.info(
+                f"[OK] Produto {product['id']} → chat={chat_id} "
+                f"topic={message_thread_id} ({category})"
+            )
             return True
 
         except Exception as e:
