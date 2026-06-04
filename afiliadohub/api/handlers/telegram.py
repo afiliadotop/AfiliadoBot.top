@@ -169,6 +169,7 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("stats", self.stats_command))
         self.application.add_handler(CommandHandler("baixar", self.baixar_command))
         self.application.add_handler(CommandHandler("topicos", self.topicos_command))
+        self.application.add_handler(CommandHandler("66", self.campanha_66_command))
 
         # Handler para novos membros (Boas-vindas AIDA)
         self.application.add_handler(
@@ -1672,7 +1673,167 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
         message = headline + interest + desire + action + meta
         return message
 
+    async def campanha_66_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler para /66 [slot] — dispara a campanha 6.6 manualmente (somente admins).
+
+        Uso:
+            /66              → slot automático (detecta pela hora)
+            /66 morning      → slot específico
+            /66 beleza       → força keyword de beleza (slot afternoon)
+        """
+        import math
+        from ..utils.topic_router import get_thread_id
+
+        user_id = str(update.effective_user.id)
+        admin_ids = str(os.getenv("ADMIN_IDS", ""))
+
+        if user_id not in admin_ids:
+            await update.message.reply_text("⛔ Apenas admins podem disparar a campanha 6.6.")
+            return
+
+        SLOTS_CFG = {
+            "morning":      {"keywords": ["presente namorada", "kit presente namorados"], "topic": "namorados", "label": "🌅 Abertura"},
+            "late_morning": {"keywords": ["vestido feminino", "conjunto feminino"],       "topic": "roupas",    "label": "👗 Moda"},
+            "noon":         {"keywords": ["brinco promoção", "colar feminino desconto"],  "topic": "bijuterias","label": "💎 Bijuterias"},
+            "afternoon":    {"keywords": ["kit skincare oferta", "perfume feminino"],     "topic": "beleza",    "label": "💆 Beleza"},
+            "evening":      {"keywords": ["presente namorado desconto", "kit romântico"], "topic": "namorados", "label": "🌙 Prime Time"},
+        }
+
+        CATEGORY_OVERRIDE = {
+            "roupas": "late_morning", "moda": "late_morning",
+            "bijuteria": "noon", "bijuterias": "noon", "acessorios": "noon",
+            "beleza": "afternoon", "skincare": "afternoon",
+            "namorados": "evening", "namorado": "evening", "presente": "morning",
+        }
+
+        arg = (context.args[0].lower() if context.args else "").strip()
+
+        # Resolve slot
+        if arg in SLOTS_CFG:
+            slot_name = arg
+        elif arg in CATEGORY_OVERRIDE:
+            slot_name = CATEGORY_OVERRIDE[arg]
+        else:
+            # Auto-detecta pela hora UTC
+            from datetime import timezone
+            utc_hour = datetime.now(timezone.utc).hour
+            slot_name = min(SLOTS_CFG.keys(), key=lambda s: abs(
+                {"morning": 10, "late_morning": 13, "noon": 15, "afternoon": 19, "evening": 23}[s] - utc_hour
+            ))
+
+        slot = SLOTS_CFG[slot_name]
+        thread_id = get_thread_id(category=slot["topic"])
+
+        status = await update.message.reply_text(
+            f"🛍️ <b>Campanha 6.6 — {slot['label']}</b>\n"
+            f"⏳ Buscando produtos ao vivo na Shopee...\n"
+            f"🏷️ Keywords: <code>{', '.join(slot['keywords'])}</code>",
+            parse_mode="HTML",
+        )
+
+        from ..handlers.shopee_api import create_shopee_client
+
+        sent = 0
+        for keyword in slot["keywords"]:
+            try:
+                client = create_shopee_client()
+                async with client:
+                    result = await client.get_products(
+                        keyword=keyword,
+                        is_key_seller=True,
+                        is_ams_offer=True,
+                        sort_type=2,
+                        limit=20,
+                    )
+                    nodes = result.get("nodes", [])
+
+                    filtered = [
+                        n for n in nodes
+                        if float(n.get("priceDiscountRate") or 0) >= 15
+                        and int(n.get("sales") or 0) >= 10
+                        and float(n.get("ratingStar") or 0) >= 4.3
+                    ]
+                    if not filtered:
+                        filtered = sorted(nodes, key=lambda n: float(n.get("priceDiscountRate") or 0), reverse=True)[:2]
+
+                    top = sorted(filtered, key=lambda n: float(n.get("priceDiscountRate") or 0) * math.log(int(n.get("sales") or 0) + 1), reverse=True)[:2]
+
+                    for node in top:
+                        offer_url = node.get("offerLink") or node.get("productLink")
+                        if offer_url and not node.get("shortLink"):
+                            short = await client.generate_short_link(offer_url, sub_ids=[f"66_{slot_name}", "admin"])
+                            if short:
+                                node["shortLink"] = short
+
+                    for node in top:
+                        product = self._map_shopee_node_to_product(node)
+                        discount = int(node.get("priceDiscountRate") or 0)
+
+                        import html as _html
+                        name_raw = node.get("productName", "Produto")[:60]
+                        price = float(node.get("priceMin") or 0)
+                        sales = int(node.get("sales") or 0)
+                        rating = float(node.get("ratingStar") or 0)
+                        link = node.get("shortLink") or node.get("offerLink") or "https://shopee.com.br"
+                        image_url = node.get("imageUrl")
+                        original = price / (1 - discount / 100) if discount > 0 and price > 0 else 0
+
+                        caption = (
+                            f"🔥 <b>6.6 SALE: {discount}% OFF!</b>\n\n"
+                            f"📦 <b><a href='{link}'>{_html.escape(name_raw)}</a></b>\n\n"
+                        )
+                        if original > price > 0:
+                            caption += f"❌ <s>R$ {original:.2f}</s>  →  🔥 <b>R$ {price:.2f}</b>\n"
+                            caption += f"💸 <b>Economia: R$ {original - price:.2f}!</b>\n\n"
+                        elif price > 0:
+                            caption += f"💰 <b>R$ {price:.2f}</b>\n\n"
+
+                        caption += f"⭐ {rating:.1f} · {sales:,} compradores\n\n"
+                        caption += "🛒 <b>GARANTIR AGORA →</b>\n"
+                        caption += f"#Shopee66 #Sale66 #AfiliadoTop"
+
+                        keyboard = InlineKeyboardMarkup([[
+                            InlineKeyboardButton(f"🛒 GARANTIR {discount}% OFF — 6.6", url=link)
+                        ]])
+
+                        send_kwargs = dict(
+                            chat_id=update.effective_chat.id if not thread_id else os.getenv("TELEGRAM_CHANNEL_ID", update.effective_chat.id),
+                            parse_mode="HTML",
+                            reply_markup=keyboard,
+                            **( {"message_thread_id": thread_id} if thread_id else {} ),
+                        )
+
+                        if image_url:
+                            try:
+                                await update.get_bot().send_photo(photo=image_url, caption=caption, **send_kwargs)
+                            except Exception:
+                                await update.get_bot().send_message(text=caption, **send_kwargs)
+                        else:
+                            await update.get_bot().send_message(text=caption, **send_kwargs)
+
+                        sent += 1
+                        await asyncio.sleep(4)
+
+            except Exception as e:
+                logger.error(f"[/66] Erro na keyword '{keyword}': {e}", exc_info=True)
+
+        if sent > 0:
+            await status.edit_text(
+                f"✅ <b>Campanha 6.6 disparada!</b>\n"
+                f"📤 {sent} produto(s) enviados para o tópico {slot['topic']}.\n"
+                f"🏷️ Sub-ID de rastreamento: <code>66_{slot_name}</code>",
+                parse_mode="HTML",
+            )
+        else:
+            await status.edit_text(
+                "❌ Nenhum produto encontrado com os filtros de qualidade.\n"
+                "Tente outro slot ou keyword: /66 morning, /66 beleza, /66 roupas"
+            )
+
+        logger.info(f"[/66] Admin {user_id} disparou slot '{slot_name}' → {sent} produtos")
+
     async def topicos_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
         """Handler para /topicos — lista thread IDs de todos os tópicos do grupo (somente admins)."""
         user_id = str(update.effective_user.id)
         admin_ids = str(os.getenv("ADMIN_IDS", ""))

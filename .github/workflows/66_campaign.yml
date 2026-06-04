@@ -1,49 +1,53 @@
-name: Telegram Daily Promo
+name: 🛍️ Shopee 6.6 Mid-Year Sale Campaign
 
 on:
   schedule:
-    # 10h BRT = 13h UTC
-    - cron: '0 13 * * *'
-    # 18h BRT = 21h UTC  
-    - cron: '0 21 * * *'
-  workflow_dispatch:  # Permite execução manual
+    # Todos os horários em UTC (BRT = UTC-3)
+    - cron: '0 10 6 6 *'   # 07h BRT — Abertura: Presente Namorada
+    - cron: '0 13 6 6 *'   # 10h BRT — Moda Feminina
+    - cron: '0 15 6 6 *'   # 12h BRT — Bijuterias
+    - cron: '0 19 6 6 *'   # 16h BRT — Beleza & Skincare
+    - cron: '0 23 6 6 *'   # 20h BRT — Prime Time Namorados
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Slot a executar (morning/late_morning/noon/afternoon/evening)'
+        required: false
+        default: ''
 
 jobs:
-  send-promo:
+  send-66-promo:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Cache dependencies
+
+      - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-      
+          restore-keys: ${{ runner.os }}-pip-
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Send daily promotions
+
+      - name: Run 6.6 Campaign
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-          # Shopee API — obrigatório para busca ao vivo
           SHOPEE_APP_ID: ${{ secrets.SHOPEE_APP_ID }}
           SHOPEE_APP_SECRET: ${{ secrets.SHOPEE_APP_SECRET }}
-          # Tópicos do grupo (Forum thread IDs)
+          # Topic IDs — configure no Render e copie aqui como secrets
           TOPIC_ROUPAS: ${{ secrets.TOPIC_ROUPAS }}
           TOPIC_BIJUTERIAS: ${{ secrets.TOPIC_BIJUTERIAS }}
           TOPIC_BELEZA: ${{ secrets.TOPIC_BELEZA }}
@@ -53,14 +57,13 @@ jobs:
           TOPIC_GERAL: ${{ secrets.TOPIC_GERAL }}
         run: |
           export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/afiliadohub
-          python scripts/production/send_daily_promo.py
-      
-      - name: Upload logs (if failed)
+          python scripts/production/send_66_campaign.py "${{ github.event.inputs.slot }}"
+
+      - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: telegram-logs
-          path: |
-            *.log
-          retention-days: 7
+          name: 66-campaign-logs
+          path: '*.log'
+          retention-days: 3
           if-no-files-found: warn
