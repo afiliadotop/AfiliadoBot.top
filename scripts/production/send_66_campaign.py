@@ -182,25 +182,31 @@ def format_66_message(node: dict, sub_id: str) -> str:
     return msg
 
 
-async def fetch_66_products(keyword: str, sub_id: str, limit: int = 20) -> list:
-    """Busca produtos ao vivo filtrando para ofertas ativas do 6.6."""
+async def fetch_66_products(keyword: str, sub_id: str, topic: str = "geral", limit: int = 20) -> list:
+    """Busca produtos ao vivo com 4 camadas de fallback para garantir resultado."""
     from afiliadohub.api.utils.shopee_client import create_shopee_client
 
+    FALLBACK_KW = {
+        "roupas":     "vestido feminino",
+        "bijuterias": "brinco feminino",
+        "beleza":     "kit skincare",
+        "namorados":  "presente romântico",
+        "geral":      "oferta shopee",
+    }
+
     client = create_shopee_client()
-    candidates = []
 
     async with client:
-        # Busca prioritária: key sellers + AMS + mais vendidos
+        # Camada 1: key sellers + AMS + filtros premium
         result = await client.get_products(
             keyword=keyword,
             is_key_seller=True,
             is_ams_offer=True,
-            sort_type=2,   # ITEM_SOLD_DESC
+            sort_type=2,
             limit=limit,
         )
         nodes = result.get("nodes", []) if result else []
 
-        # Filtro anti-manopla para o 6.6
         filtered = [
             n for n in nodes
             if float(n.get("priceDiscountRate") or 0) >= 15
@@ -208,29 +214,31 @@ async def fetch_66_products(keyword: str, sub_id: str, limit: int = 20) -> list:
             and float(n.get("ratingStar") or 0) >= 4.3
         ]
 
-        # Fallback mais amplo se não encontrar
+        # Camada 2: relaxa filtros (pré-sale — 6.6 ainda não começou)
         if not filtered:
-            result2 = await client.get_products(
-                keyword=keyword,
-                sort_type=2,
-                limit=limit,
-            )
-            nodes2 = result2.get("nodes", []) if result2 else []
             filtered = [
-                n for n in nodes2
-                if float(n.get("priceDiscountRate") or 0) >= 10
+                n for n in nodes
+                if float(n.get("priceDiscountRate") or 0) >= 5
                 and float(n.get("ratingStar") or 0) >= 4.0
-            ] or nodes2[:3]
+            ]
 
-        candidates = filtered
+        # Camada 3: qualquer produto da busca, sem filtro
+        if not filtered and nodes:
+            filtered = sorted(nodes, key=lambda n: float(n.get("ratingStar") or 0), reverse=True)[:3]
 
-        # Gera short links com sub_id rastreável (mede qual slot converte)
-        top = sorted(candidates, key=real_score, reverse=True)[:2]
+        # Camada 4: keyword genérica do tópico
+        if not filtered:
+            fallback_kw = FALLBACK_KW.get(topic, "oferta shopee")
+            print(f"  [FALLBACK] Tentando keyword genérica: '{fallback_kw}'")
+            result2 = await client.get_products(keyword=fallback_kw, sort_type=2, limit=10)
+            fb_nodes = result2.get("nodes", []) if result2 else []
+            filtered = sorted(fb_nodes, key=lambda n: float(n.get("ratingStar") or 0), reverse=True)[:3]
+
+        # Gera short links rastreáveis para o top 2
+        top = sorted(filtered, key=real_score, reverse=True)[:2]
         for node in top:
             offer_url = node.get("offerLink") or node.get("productLink")
             if offer_url and not node.get("shortLink"):
-                short = await client.generate_short_link(
-                    offer_url, sub_ids=[sub_id, "66sale"]
                 )
                 if short:
                     node["shortLink"] = short

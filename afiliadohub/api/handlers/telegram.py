@@ -1747,14 +1747,47 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
                     )
                     nodes = result.get("nodes", [])
 
+                    # Camada 1: filtros premium 6.6
                     filtered = [
                         n for n in nodes
                         if float(n.get("priceDiscountRate") or 0) >= 15
                         and int(n.get("sales") or 0) >= 10
                         and float(n.get("ratingStar") or 0) >= 4.3
                     ]
+
+                    # Camada 2: relaxa filtros (pre-sale — produto ainda sem desconto 6.6)
                     if not filtered:
-                        filtered = sorted(nodes, key=lambda n: float(n.get("priceDiscountRate") or 0), reverse=True)[:2]
+                        filtered = [
+                            n for n in nodes
+                            if float(n.get("priceDiscountRate") or 0) >= 5
+                            and float(n.get("ratingStar") or 0) >= 4.0
+                        ]
+
+                    # Camada 3: qualquer produto da busca, sem filtro
+                    if not filtered and nodes:
+                        filtered = sorted(nodes, key=lambda n: float(n.get("ratingStar") or 0), reverse=True)[:3]
+
+                    # Camada 4: keyword genérica do tópico se tudo falhou
+                    if not filtered:
+                        FALLBACK_KW = {
+                            "roupas":     "vestido feminino",
+                            "bijuterias": "brinco feminino",
+                            "beleza":     "kit skincare",
+                            "namorados":  "presente romântico",
+                            "geral":      "oferta shopee",
+                        }
+                        fallback_kw = FALLBACK_KW.get(slot["topic"], "oferta shopee")
+                        result_fb = await client.get_products(
+                            keyword=fallback_kw,
+                            sort_type=2,
+                            limit=10,
+                        )
+                        fb_nodes = result_fb.get("nodes", [])
+                        filtered = sorted(
+                            fb_nodes,
+                            key=lambda n: float(n.get("ratingStar") or 0),
+                            reverse=True
+                        )[:2]
 
                     top = sorted(filtered, key=lambda n: float(n.get("priceDiscountRate") or 0) * math.log(int(n.get("sales") or 0) + 1), reverse=True)[:2]
 
