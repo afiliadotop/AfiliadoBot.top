@@ -57,7 +57,7 @@ SLOTS = {
         "utc_hour": 3,
         "keywords": ["kit desconto", "oferta exclusiva"],
         "topic": "cupons",
-        "sub_id": "66_00h",
+        "sub_id": "sale6600h",
         "intro": (
             "🚨 <b>O SHOPEE 6.6 COMEÇOU OFICIALMENTE!</b> 🚨\n"
             "Corra para resgatar seus cupons de Frete Grátis e 50% OFF antes que acabem!\n\n"
@@ -69,7 +69,7 @@ SLOTS = {
         "utc_hour": 10,
         "keywords": ["presente namorada", "kit presente namorados"],
         "topic": "namorados",
-        "sub_id": "66_07h",
+        "sub_id": "sale6607h",
         "intro": (
             "💥 <b>SHOPEE 6.6 COMEÇOU!</b>\n"
             "🛍️ As maiores ofertas do meio do ano estão ao vivo agora.\n"
@@ -81,7 +81,7 @@ SLOTS = {
         "utc_hour": 13,
         "keywords": ["vestido feminino", "conjunto feminino"],
         "topic": "roupas",
-        "sub_id": "66_10h",
+        "sub_id": "sale6610h",
         "intro": (
             "👗 <b>6.6 NA MODA FEMININA!</b>\n"
             "As roupas mais vendidas da Shopee com desconto real agora.\n"
@@ -93,7 +93,7 @@ SLOTS = {
         "utc_hour": 15,
         "keywords": ["brinco promoção", "colar feminino desconto"],
         "topic": "bijuterias",
-        "sub_id": "66_12h",
+        "sub_id": "sale6612h",
         "intro": (
             "💎 <b>BIJUTERIAS COM PREÇO DE SALE 6.6!</b>\n"
             "Colares, brincos e pulseiras com os maiores descontos do ano.\n"
@@ -105,7 +105,7 @@ SLOTS = {
         "utc_hour": 19,
         "keywords": ["kit skincare oferta", "perfume feminino 6.6"],
         "topic": "beleza",
-        "sub_id": "66_16h",
+        "sub_id": "sale6616h",
         "intro": (
             "✨ <b>CUIDADOS FEMININOS NO 6.6!</b>\n"
             "Skincare, perfumes e beleza com desconto confirmado.\n"
@@ -117,7 +117,7 @@ SLOTS = {
         "utc_hour": 23,
         "keywords": ["presente namorado desconto", "kit romântico sale"],
         "topic": "namorados",
-        "sub_id": "66_20h",
+        "sub_id": "sale6620h",
         "intro": (
             "💝 <b>ÚLTIMAS HORAS DO 6.6!</b>\n"
             "Dia dos Namorados chega em breve — garanta o presente hoje\n"
@@ -251,7 +251,7 @@ async def fetch_66_products(keyword: str, sub_id: str, topic: str = "geral", lim
         for node in top:
             offer_url = node.get("offerLink") or node.get("productLink")
             if offer_url and not node.get("shortLink"):
-                short = await client.generate_short_link(offer_url, sub_ids=[sub_id, "66sale"])
+                short = await client.generate_short_link(offer_url, sub_ids=[sub_id, "sale66"])
                 if short:
                     node["shortLink"] = short
 
@@ -310,7 +310,7 @@ async def send_66_slot(slot_name: str):
             from afiliadohub.api.utils.shopee_client import create_shopee_client
             client = create_shopee_client()
             async with client:
-                coupon_link = await client.generate_short_link("https://shopee.com.br/m/cupons-shopee", sub_ids=["66_cupons"])
+                coupon_link = await client.generate_short_link("https://shopee.com.br/m/cupons-shopee", sub_ids=["cupons66"])
             if coupon_link:
                 intro_kwargs["reply_markup"] = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🎟️ RESGATAR CUPONS 6.6 AGORA!", url=coupon_link)]

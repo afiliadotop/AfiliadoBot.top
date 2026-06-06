@@ -1796,7 +1796,7 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
                     for node in top:
                         offer_url = node.get("offerLink") or node.get("productLink")
                         if offer_url and not node.get("shortLink"):
-                            short = await client.generate_short_link(offer_url, sub_ids=[f"66_{slot_name}", "admin"])
+                            short = await client.generate_short_link(offer_url, sub_ids=[f"sale66{slot_name}", "admin"])
                             if short:
                                 node["shortLink"] = short
 
