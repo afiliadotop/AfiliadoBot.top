@@ -647,22 +647,18 @@ async def send_product_to_telegram(
         else:
             desire += "\n\n"
 
-        # AIDA: Action (CTA e Link direto no texto para repasses e WhatsApp)
-        # Se você já passou pelo encurtador interno use shortLink
-        offer_link = product.get("shortLink") or product.get("offerLink", "Link")
-        action = f"🛒 <b>COMPRE AQUI 👇</b>\n🔗 {offer_link}\n\n"
-        
+        # AIDA: Action — SEM link no texto (evita preview feio do Telegram)
+        # O link fica APENAS no botão inline abaixo
+        action = "\u23f3 <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
+
         # Inserção de Depoimentos Reais (PROVA SOCIAL)
         reviews = product_data.get("reviews", [])
         if reviews:
-            action += "💬 <b>O QUE DIZEM OS COMPRADORES:</b>\n"
-            for r in reviews[:3]:
-                # Estrelas e comentário limpo (Escapado para HTML)
-                comment = html.escape(r.get('comment', 'Produto excelente!'))
+            action = "💬 <b>O QUE DIZEM OS COMPRADORES:</b>\n"
+            for r in reviews[:2]:
+                comment = html.escape(r.get('comment', 'Produto excelente!')[:80])
                 action += f"⭐ {comment}\n"
-            action += "\n"
-
-        action += "⏳ <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
+            action += "\n⏳ <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
 
         # Monta mensagem final
         message = attention + interest + desire + action
@@ -691,6 +687,9 @@ async def send_product_to_telegram(
         )
         logger.info(f"[Telegram Post] Thread ID detectado: {thread_id}")
 
+        # Link para o botão: prefere shortLink rastreado
+        offer_link = product.get("shortLink") or product.get("offerLink", "#")
+
         payload = {
             "chat_id": channel_id,
             media_field: media_url,
@@ -700,8 +699,8 @@ async def send_product_to_telegram(
                 "inline_keyboard": [
                     [
                         {
-                            "text": "🛒 COMPRAR AGORA COM DESCONTO!",
-                            "url": product.get("offerLink", "#"),
+                            "text": f"🛒 COMPRAR {int(discount)}% OFF AGORA!" if discount else "🛒 COMPRAR AGORA!",
+                            "url": offer_link,
                         }
                     ]
                 ]
@@ -745,13 +744,13 @@ async def send_product_to_telegram(
                         "chat_id": channel_id,
                         "text": message,
                         "parse_mode": "HTML",
-                        "disable_web_page_preview": False,
+                        "disable_web_page_preview": True,
                         "reply_markup": {
                             "inline_keyboard": [
                                 [
                                     {
-                                        "text": "🛒 COMPRAR AGORA COM DESCONTO!",
-                                        "url": product.get("offerLink", "#"),
+                                        "text": f"🛒 COMPRAR {int(discount)}% OFF AGORA!" if discount else "🛒 COMPRAR AGORA!",
+                                        "url": offer_link,
                                     }
                                 ]
                             ]
