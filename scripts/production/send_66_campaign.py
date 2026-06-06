@@ -239,7 +239,7 @@ async def fetch_66_products(keyword: str, sub_id: str, topic: str = "geral", lim
         for node in top:
             offer_url = node.get("offerLink") or node.get("productLink")
             if offer_url and not node.get("shortLink"):
-                )
+                short = await client.generate_short_link(offer_url, sub_ids=[sub_id, "66sale"])
                 if short:
                     node["shortLink"] = short
 
