@@ -52,6 +52,18 @@ except ImportError:
 # CONFIGURAÇÃO DOS 5 SLOTS DO DIA 6.6
 # ─────────────────────────────────────────────────────────────────────────────
 SLOTS = {
+    "midnight": {
+        "label": "🎆 Meia-noite — Abertura do 6.6 & Cupons",
+        "utc_hour": 3,
+        "keywords": ["kit desconto", "oferta exclusiva"],
+        "topic": "cupons",
+        "sub_id": "66_00h",
+        "intro": (
+            "🚨 <b>O SHOPEE 6.6 COMEÇOU OFICIALMENTE!</b> 🚨\n"
+            "Corra para resgatar seus cupons de Frete Grátis e 50% OFF antes que acabem!\n\n"
+            "👇 <b>Clique abaixo para resgatar todos os cupons:</b>"
+        ),
+    },
     "morning": {
         "label": "🌅 Abertura 6.6 — Primeiras Ofertas do Dia",
         "utc_hour": 10,
@@ -257,7 +269,10 @@ def detect_current_slot() -> str:
             return slot_name
 
     # Fallback: slot mais próximo
-    closest = min(SLOTS.items(), key=lambda x: abs(utc_hour - x[1]["utc_hour"]))
+    closest = min(SLOTS.items(), key=lambda x: abs(
+        (utc_hour if utc_hour >= 3 else utc_hour + 24) - 
+        (x[1]["utc_hour"] if x[1]["utc_hour"] >= 3 else x[1]["utc_hour"] + 24)
+    ))
     return closest[0]
 
 
@@ -282,13 +297,26 @@ async def send_66_slot(slot_name: str):
         thread_id = get_thread_id(category=slot["topic"])
         print(f"  Thread ID: {thread_id or 'não configurado (geral)'}")
 
-    # Envia mensagem de abertura do slot
     intro_kwargs = dict(
         chat_id=TELEGRAM_CHANNEL_ID,
         text=slot["intro"],
         parse_mode="HTML",
         **( {"message_thread_id": thread_id} if thread_id else {} ),
     )
+    
+    # Se for midnight, gera um botão direto para a página de cupons
+    if slot_name == "midnight":
+        try:
+            from afiliadohub.api.utils.shopee_client import create_shopee_client
+            client = create_shopee_client()
+            async with client:
+                coupon_link = await client.generate_short_link("https://shopee.com.br/m/cupons-shopee", sub_ids=["66_cupons"])
+            if coupon_link:
+                intro_kwargs["reply_markup"] = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🎟️ RESGATAR CUPONS 6.6 AGORA!", url=coupon_link)]
+                ])
+        except Exception as e:
+            print(f"  [AVISO] Erro ao gerar link de cupons: {e}")
     try:
         await bot.send_message(**intro_kwargs)
         await asyncio.sleep(2)

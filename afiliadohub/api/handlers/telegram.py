@@ -1692,6 +1692,7 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
             return
 
         SLOTS_CFG = {
+            "midnight":     {"keywords": ["kit desconto", "oferta exclusiva"],            "topic": "cupons",    "label": "🎆 Meia-noite / Cupons"},
             "morning":      {"keywords": ["presente namorada", "kit presente namorados"], "topic": "namorados", "label": "🌅 Abertura"},
             "late_morning": {"keywords": ["vestido feminino", "conjunto feminino"],       "topic": "roupas",    "label": "👗 Moda"},
             "noon":         {"keywords": ["brinco promoção", "colar feminino desconto"],  "topic": "bijuterias","label": "💎 Bijuterias"},
@@ -1704,6 +1705,7 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
             "bijuteria": "noon", "bijuterias": "noon", "acessorios": "noon",
             "beleza": "afternoon", "skincare": "afternoon",
             "namorados": "evening", "namorado": "evening", "presente": "morning",
+            "cupons": "midnight", "cupom": "midnight"
         }
 
         arg = (context.args[0].lower() if context.args else "").strip()
@@ -1718,7 +1720,7 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
             from datetime import timezone
             utc_hour = datetime.now(timezone.utc).hour
             slot_name = min(SLOTS_CFG.keys(), key=lambda s: abs(
-                {"morning": 10, "late_morning": 13, "noon": 15, "afternoon": 19, "evening": 23}[s] - utc_hour
+                {"midnight": 3, "morning": 10, "late_morning": 13, "noon": 15, "afternoon": 19, "evening": 23}[s] - utc_hour
             ))
 
         slot = SLOTS_CFG[slot_name]

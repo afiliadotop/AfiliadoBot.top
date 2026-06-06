@@ -3,6 +3,7 @@ name: 🛍️ Shopee 6.6 Mid-Year Sale Campaign
 on:
   schedule:
     # Todos os horários em UTC (BRT = UTC-3)
+    - cron: '0 3 6 6 *'    # 00h BRT — Meia-noite (Virada do 6.6 / Cupons)
     - cron: '0 10 6 6 *'   # 07h BRT — Abertura: Presente Namorada
     - cron: '0 13 6 6 *'   # 10h BRT — Moda Feminina
     - cron: '0 15 6 6 *'   # 12h BRT — Bijuterias
@@ -11,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       slot:
-        description: 'Slot a executar (morning/late_morning/noon/afternoon/evening)'
+        description: 'Slot a executar (midnight/morning/late_morning/noon/afternoon/evening)'
         required: false
         default: ''
 
