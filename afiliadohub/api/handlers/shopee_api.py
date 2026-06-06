@@ -682,6 +682,15 @@ async def send_product_to_telegram(
         logger.info(f"[Telegram Post] Chat ID: {channel_id}")
         logger.info(f"[Telegram Post] Message Len: {len(message)}")
 
+        # Detecta tópico do produto automaticamente
+        from ..utils.topic_router import get_thread_id
+        thread_id = get_thread_id(
+            product_name=product.get("productName", ""),
+            keyword=product.get("keyword", ""),
+            product_category=str(product.get("catId", "")),
+        )
+        logger.info(f"[Telegram Post] Thread ID detectado: {thread_id}")
+
         payload = {
             "chat_id": channel_id,
             media_field: media_url,
@@ -698,6 +707,10 @@ async def send_product_to_telegram(
                 ]
             },
         }
+
+        # Injeta message_thread_id se tópico detectado
+        if thread_id:
+            payload["message_thread_id"] = thread_id
 
         # Se for vídeo, adiciona parâmetros de otimização
         if video_url:
