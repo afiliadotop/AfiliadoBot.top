@@ -128,7 +128,7 @@ def detect_category(
 
 
 def get_thread_id(
-    category: str = "geral",
+    category: str = "auto",
     product_name: str = "",
     keyword: str = "",
     product_category: str = "",
