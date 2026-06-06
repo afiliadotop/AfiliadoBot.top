@@ -355,20 +355,40 @@ async def send_66_slot(slot_name: str):
                 reply_markup=keyboard,
                 **( {"message_thread_id": thread_id} if thread_id else {} ),
             )
+            send_kwargs_general = dict(
+                chat_id=TELEGRAM_CHANNEL_ID,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+
+            async def _send_product(kw: dict, label: str) -> bool:
+                if image_url:
+                    try:
+                        await bot.send_photo(photo=image_url, caption=caption, **kw)
+                        print(f"  ✅ [{sent+1}] {label} FOTO: {name}...")
+                        return True
+                    except Exception:
+                        pass
+                await bot.send_message(text=caption, disable_web_page_preview=True, **kw)
+                print(f"  ✅ [{sent+1}] {label} TEXTO: {name}...")
+                return True
 
             try:
-                if image_url:
-                    await bot.send_photo(photo=image_url, caption=caption, **send_kwargs)
-                    print(f"  ✅ [{sent+1}] FOTO: {name}...")
-                else:
-                    await bot.send_message(text=caption, disable_web_page_preview=False, **send_kwargs)
-                    print(f"  ✅ [{sent+1}] TEXTO: {name}...")
-
+                await _send_product(send_kwargs, "")
                 sent += 1
                 await asyncio.sleep(5)
-
             except Exception as e:
-                print(f"  ❌ Erro ao enviar produto: {e}")
+                if thread_id and "thread" in str(e).lower():
+                    print(f"  ⚠️ Thread {thread_id} inválido, enviando ao General...")
+                    try:
+                        await _send_product(send_kwargs_general, "[General]")
+                        sent += 1
+                        await asyncio.sleep(5)
+                    except Exception as e2:
+                        print(f"  ❌ Erro mesmo no General: {e2}")
+                else:
+                    print(f"  ❌ Erro ao enviar produto: {e}")
+
 
         # Pausa entre keywords
         if len(slot["keywords"]) > 1:

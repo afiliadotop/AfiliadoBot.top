@@ -1795,15 +1795,34 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
                         reply_markup=keyboard,
                         **( {"message_thread_id": thread_id} if thread_id else {} ),
                     )
+                    send_kw_no_thread = dict(
+                        chat_id=channel_id,
+                        parse_mode="HTML",
+                        reply_markup=keyboard,
+                    )
 
                     bot = update.get_bot()
-                    if image_url:
-                        try:
-                            await bot.send_photo(photo=image_url, caption=caption, **send_kw)
-                        except Exception:
-                            await bot.send_message(text=caption, **send_kw)
-                    else:
-                        await bot.send_message(text=caption, **send_kw)
+
+                    async def _send(kw: dict) -> bool:
+                        """Tenta enviar foto, fallback texto. Retorna True se ok."""
+                        if image_url:
+                            try:
+                                await bot.send_photo(photo=image_url, caption=caption, **kw)
+                                return True
+                            except Exception:
+                                pass
+                        await bot.send_message(text=caption, **kw)
+                        return True
+
+                    try:
+                        await _send(send_kw)
+                    except Exception as send_err:
+                        if thread_id and "thread" in str(send_err).lower():
+                            # Thread ID inválido — tenta sem tópico (General)
+                            logger.warning(f"[/66] Thread {thread_id} inválido, enviando ao General: {send_err}")
+                            await _send(send_kw_no_thread)
+                        else:
+                            raise
 
                     sent += 1
                     await asyncio.sleep(3)
