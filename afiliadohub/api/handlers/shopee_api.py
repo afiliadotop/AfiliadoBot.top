@@ -683,7 +683,7 @@ async def send_product_to_telegram(
         thread_id = get_thread_id(
             product_name=product.get("productName", ""),
             keyword=product.get("keyword", ""),
-            product_category=str(product.get("catId", "")),
+            product_category=str(product.get("productCatIds", [""])[0] if product.get("productCatIds") else ""),
         )
         logger.info(f"[Telegram Post] Thread ID detectado: {thread_id}")
 
@@ -718,7 +718,7 @@ async def send_product_to_telegram(
         try:
             async with httpx.AsyncClient() as http_client:
                 response = await http_client.post(
-                    telegram_url, json=payload, timeout=10.0
+                    telegram_url, json=payload, timeout=30.0
                 )
 
                 if response.status_code == 200:

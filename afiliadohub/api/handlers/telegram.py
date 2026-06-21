@@ -782,7 +782,7 @@ Ex: /buscar eletrônicos
                 if float(n.get("priceDiscountRate", 0)) >= 20
                 and int(n.get("sales") or 0) >= 50
                 and float(n.get("ratingStar") or 0) >= 4.5
-                and any(t in (n.get("shopType") or []) for t in [1, 2, 4])
+                and n.get("shopType") in [1, 2, 4]
             ]
 
             # Fallback: relaxa sales mas mantém qualidade
@@ -1440,15 +1440,8 @@ Clique no link abaixo e veja os <b>ACHADINHOS DE HOJE</b>:
                     
         except Exception as e:
             logger.error(f"[TELEGRAM ML Bot] Erro processando link: {e}")
-            
-        return False
 
-        # 3. Caso contrário, resposta padrão educada (Apenas se for no privado)
-        if is_private:
-            await update.message.reply_text(
-                f"🤔 <b>Não entendi essa mensagem, {user_name}.</b>\n\nMas não se preocupe! Você pode usar o menu de comandos ou digitar /help para eu te mostrar o caminho das ofertas! ✨",
-                parse_mode="HTML"
-            )
+        return False
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handler para botões inline"""

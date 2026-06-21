@@ -44,6 +44,7 @@ if not TELEGRAM_BOT_TOKEN:
 # ──────────────────────────────────────────────────────────────
 
 MORNING_KEYWORDS = [
+    # Índices 0-6 — usados no slot MANHÃ
     "vestido feminino",
     "conjunto feminino",
     "blusa feminina",
@@ -51,9 +52,18 @@ MORNING_KEYWORDS = [
     "sandália feminina",
     "tênis feminino",
     "bolsa feminina",
+    # Índices 7-13 — reservados para evitar colisão (nunca usados às 11h)
+    "saia midi",
+    "cropped feminino",
+    "jaqueta feminina",
+    "moletom feminino",
+    "shorts feminino",
+    "legging feminina",
+    "macacão feminino",
 ]
 
 EVENING_KEYWORDS = [
+    # Índices 0-6 — usados no slot TARDE
     "kit skincare",
     "perfume feminino",
     "brinco",
@@ -61,18 +71,33 @@ EVENING_KEYWORDS = [
     "pulseira",
     "maquiagem",
     "hidratante corporal",
+    # Índices 7-13 — reservados para evitar colisão (nunca usados às 18h via slot_offset=7)
+    "máscara facial",
+    "protetor solar",
+    "sérum facial",
+    "esmalte unhas",
+    "anel feminino",
+    "tiara cabelo",
+    "kit manicure",
 ]
 
 
-def pick_keyword(keywords: list) -> str:
-    """Seleciona keyword baseado no dia do mês para rotação automática."""
-    day = datetime.now().day
-    return keywords[day % len(keywords)]
+def pick_keyword(keywords: list, slot_offset: int = 0) -> str:
+    """
+    Seleciona keyword garantindo que manhã e tarde NUNCA usem o mesmo índice.
+
+    Usa (day + slot_offset) % len(keywords):
+      - Manhã:  slot_offset = 0  → índice par
+      - Tarde:  slot_offset = len(keywords) // 2 → índice deslocado
+    Assim os dois horários sempre apontam para keywords diferentes na mesma lista.
+    """
+    day = datetime.now(timezone.utc).day
+    return keywords[(day + slot_offset) % len(keywords)]
 
 
 def is_morning_slot() -> bool:
-    """Retorna True se estamos no slot da manhã (antes das 15h UTC = 12h BRT)."""
-    return datetime.now(timezone.utc).hour < 15
+    """Retorna True se estamos no slot da manhã (antes das 14h UTC = 11h BRT)."""
+    return datetime.now(timezone.utc).hour < 14
 
 
 def real_discount_score(node: dict) -> float:
@@ -221,8 +246,13 @@ async def send_daily_promotions():
 
     morning = is_morning_slot()
     keywords_pool = MORNING_KEYWORDS if morning else EVENING_KEYWORDS
-    keyword = pick_keyword(keywords_pool)
-    slot_label = "🌅 Lançamento da Manhã" if morning else "🌆 Lançamento da Tarde"
+
+    # slot_offset garante que manhã e tarde usem índices DIFERENTES da pool delas
+    # Manhã: offset 0 (ex: day=21 → índice 0)
+    # Tarde: offset metade do tamanho da pool (ex: day=21, offset=3 → índice 3)
+    slot_offset = 0 if morning else (len(keywords_pool) // 2)
+    keyword = pick_keyword(keywords_pool, slot_offset)
+    slot_label = "🌅 Lançamento da Manhã (11h BRT)" if morning else "🌆 Lançamento da Tarde (18h BRT)"
 
     print(f"[{now_utc.strftime('%Y-%m-%d %H:%M UTC')}] {slot_label}")
     print(f"Keyword do dia: '{keyword}'")
