@@ -42,6 +42,11 @@ export interface AwinOffer {
     deeplink?: string;
     tracking_link?: string;
     is_active?: boolean;
+    image_url?: string;          // ← foto para o Telegram
+    imageUrl?: string;           // ← alias alternativo
+    category?: string;           // ← para roteamento de tópico
+    original_price?: number;
+    discount_price?: number;
 
     // Awin Raw fields
     type?: string;

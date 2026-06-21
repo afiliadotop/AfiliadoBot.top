@@ -184,10 +184,16 @@ class TelegramOfferPayload(BaseModel):
     category: Optional[str] = None
     original_price: Optional[float] = None
     discount_price: Optional[float] = None
+    current_price: Optional[float] = None
     coupon_code: Optional[str] = None
     coupon_expiry: Optional[str] = None
     store: str
     is_active: bool = True
+    image_url: Optional[str] = None   # ← foto para o Telegram
+    keyword: Optional[str] = None     # ← para roteamento de tópico
+    rating: Optional[float] = None
+    review_count: Optional[int] = None
+    discount_percentage: Optional[float] = None
 
 # ==================== DEPENDÊNCIAS DE SEGURANÇA ====================
 
@@ -427,17 +433,26 @@ async def post_offer_to_telegram(payload: TelegramOfferPayload):
             "description": payload.description,
             "affiliate_link": payload.affiliate_link,
             "short_link": payload.short_link,
-            "category": payload.category or "awin",
+            "category": payload.category or "geral",
             "original_price": payload.original_price,
+            "current_price": payload.current_price or payload.discount_price,
             "discount_price": payload.discount_price,
+            "discount_percentage": payload.discount_percentage,
             "coupon_code": payload.coupon_code,
             "coupon_expiry": payload.coupon_expiry,
             "store": payload.store,
             "is_active": payload.is_active,
+            "image_url": payload.image_url,      # ← envia foto
+            "rating": payload.rating,
+            "review_count": payload.review_count,
             "tags": [],
         }
-        
-        success = await tg_helper.send_product_to_channel(chat_id, product_dict)
+
+        success = await tg_helper.send_product_to_channel(
+            chat_id,
+            product_dict,
+            keyword=payload.keyword or payload.category or "",  # ← tópico correto
+        )
         if not success:
             raise HTTPException(status_code=500, detail="Erro ao enviar mensagem para o Telegram")
             

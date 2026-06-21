@@ -56,13 +56,15 @@ export const AwinOfferCard: React.FC<AwinOfferCardProps> = ({ offer }) => {
                 title: offer.title,
                 description: offer.description,
                 affiliate_link: trackingLink,
-                short_link: trackingLink, // You can let the backend shorten if it wants
-                category: "awin",
+                short_link: trackingLink,
+                category: offer.category || "geral",
+                keyword: offer.category || offer.type || "geral",    // ← tópico correto
                 original_price: null,
                 discount_price: null,
                 coupon_code: offer.code,
                 coupon_expiry: offer.endDate || offer.expires_at,
                 store: advertiserName,
+                image_url: (offer as any).imageUrl || (offer as any).image_url || null,  // ← foto
                 is_active: true
             };
 
