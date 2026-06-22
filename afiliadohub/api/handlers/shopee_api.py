@@ -608,21 +608,19 @@ async def send_product_to_telegram(
         product = product_data
 
         # Formata mensagem para Telegram estilo "Brutalist / Alta Conversão"
-        price = float(product.get("priceMin", 0))
-        discount = product.get("priceDiscountRate", 0)
-        sales = product.get("sales", 0)
-        rating = product.get("ratingStar", "N/A")
-        shop_type = product.get("shopType", 0)
-        product_name = product.get("productName", "Produto")
+        price    = float(product.get("priceMin", 0))
+        discount = float(product.get("priceDiscountRate", 0) or 0)
+        sales    = int(product.get("sales", 0) or 0)
+        rating   = product.get("ratingStar", "N/A")
+        shop_type = int(product.get("shopType", 0) or 0)
+        product_name = product.get("productName", "Produto") or "Produto"
 
-        # Truncate Title em 60 caracteres para não poluir
+        # Trunca e escapa o nome (evita HTML inválido)
         if len(product_name) > 60:
             product_name = product_name[:57] + "..."
-            
-        # Escape HTML characters to avoid 400 errors
         product_name = html.escape(product_name)
 
-        # AIDA: Attention (Atenção Extrema)
+        # AIDA: Attention
         if discount >= 40:
             attention = f"🚨 <b>RELÂMPAGO COM {int(discount)}% OFF!</b>\n\n"
         elif discount > 0:
@@ -630,154 +628,158 @@ async def send_product_to_telegram(
         else:
             attention = f"✨ <b>OFERTA IMPERDÍVEL!</b>\n\n"
 
-        # AIDA: Interest (Produto + Preço Agressivo)
+        # AIDA: Interest
         interest = f"📦 {product_name}\n\n"
-
         if discount > 0:
             original_price = price / (1 - discount / 100)
             interest += f"❌ <s>De: R$ {original_price:.2f}</s>\n"
-        
         interest += f"✅ <b>Por apenas: R$ {price:.2f}</b>\n\n"
 
-        # AIDA: Desire (Autoridade em linha única)
+        # AIDA: Desire
         badge = "👑 Loja Oficial" if shop_type == 1 else "⭐ Loja Indicada" if shop_type in (2, 4) else "🏬 Loja Shopee"
         desire = f"{badge} | ⭐ {rating}"
-        if sales > 0:
-            desire += f" ({sales:,}+ Vendidos)\n\n"
-        else:
-            desire += "\n\n"
+        desire += f" ({sales:,}+ Vendidos)\n\n" if sales > 0 else "\n\n"
 
-        # AIDA: Action — SEM link no texto (evita preview feio do Telegram)
-        # O link fica APENAS no botão inline abaixo
-        action = "\u23f3 <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
-
-        # Inserção de Depoimentos Reais (PROVA SOCIAL)
+        # AIDA: Action + Prova Social
+        action = "⏳ <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
         reviews = product_data.get("reviews", [])
         if reviews:
             action = "💬 <b>O QUE DIZEM OS COMPRADORES:</b>\n"
             for r in reviews[:2]:
-                comment = html.escape(r.get('comment', 'Produto excelente!')[:80])
+                comment = html.escape((r.get("comment") or "Produto excelente!")[:80])
                 action += f"⭐ {comment}\n"
             action += "\n⏳ <i>Vai esgotar rápido! Preço sujeito a alteração.</i>"
 
-        # Monta mensagem final
         message = attention + interest + desire + action
 
-        # Verifica se temos VÍDEO ou apenas FOTO
-        video_url = product_data.get("videoUrl")
-        raw_image = product.get("imageUrl", "")
+        # Detecta mídia (vídeo > foto)
+        video_url = product_data.get("videoUrl") or None
+        raw_image = product.get("imageUrl") or ""
 
-        # URLs da Shopee não têm extensão .jpg — o Telegram rejeita.
-        # Adicionamos ?t=.jpg como sufixo para forçar reconhecimento.
+        # URLs Shopee não têm extensão → adiciona _tn.jpg para susercontent.com
         if raw_image and not any(
-            raw_image.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            raw_image.lower().endswith(ext)
+            for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")
         ):
-            image_url = raw_image + "_tn.jpg" if "susercontent.com" in raw_image else raw_image
+            image_url = (raw_image + "_tn.jpg") if "susercontent.com" in raw_image else raw_image
         else:
             image_url = raw_image
 
-        media_url = video_url or image_url
-        has_media = bool(media_url)
+        media_url = video_url or image_url or None
 
-        if video_url:
-            telegram_url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
-            media_field = "video"
-        elif has_media:
-            telegram_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-            media_field = "photo"
-        else:
-            telegram_url = None
-            media_field = None
-
-        # Garante HTTPS
+        # Força HTTPS
         if media_url and media_url.startswith("http://"):
             media_url = media_url.replace("http://", "https://", 1)
 
-        logger.info(f"[Telegram Post] Media Type: {media_field}")
-        logger.info(f"[Telegram Post] URL: {media_url[:100]}...")
-        logger.info(f"[Telegram Post] Chat ID: {channel_id}")
-        logger.info(f"[Telegram Post] Message Len: {len(message)}")
+        media_field = "video" if video_url else ("photo" if media_url else None)
 
-        # Detecta tópico do produto automaticamente
+        # Detecta tópico
         from ..utils.topic_router import get_thread_id
         thread_id = get_thread_id(
             product_name=product.get("productName", ""),
             keyword=product.get("keyword", ""),
-            product_category=str(product.get("productCatIds", [""])[0] if product.get("productCatIds") else ""),
+            product_category=str(
+                product.get("productCatIds", [""])[0]
+                if product.get("productCatIds") else ""
+            ),
         )
-        logger.info(f"[Telegram Post] Thread ID detectado: {thread_id}")
 
-        # Link para o botão: prefere shortLink rastreado
-        offer_link = product.get("shortLink") or product.get("offerLink", "#")
+        # Link do botão
+        offer_link = product.get("shortLink") or product.get("offerLink") or "https://afiliado.top"
 
-        # Monta payload base (foto ou vídeo)
-        inline_btn_text = f"🛒 COMPRAR {int(discount)}% OFF AGORA!" if discount else "🛒 COMPRAR AGORA!"
-        reply_markup = {
-            "inline_keyboard": [[
-                {"text": inline_btn_text, "url": offer_link}
-            ]]
-        }
+        # Botão inline
+        btn_text = f"🛒 COMPRAR {int(discount)}% OFF AGORA!" if discount else "🛒 COMPRAR AGORA!"
+        reply_markup = {"inline_keyboard": [[{"text": btn_text, "url": offer_link}]]}
 
-        # Base kwargs compartilhados (com tópico)
-        base_payload: dict = {
-            "chat_id": channel_id,
-            "parse_mode": "HTML",
-            "reply_markup": reply_markup,
-        }
-        if thread_id:
-            base_payload["message_thread_id"] = thread_id
+        logger.info(
+            f"[TG] item={item_id} media={media_field} thread={thread_id} "
+            f"url={str(media_url)[:80]} msg_len={len(message)}"
+        )
 
-        if video_url:
-            base_payload["supports_streaming"] = True
+        # ─────────────────────────────────────────────
+        # 4 CAMADAS DE FALLBACK (garante entrega sempre)
+        # L1: mídia  + tópico
+        # L2: mídia  + sem tópico
+        # L3: texto  + tópico
+        # L4: texto  + sem tópico   ← nunca falha
+        # ─────────────────────────────────────────────
+        async def tg_post(client: httpx.AsyncClient, url: str, payload: dict) -> bool:
+            """Tenta enviar; retorna True se OK, loga detalhes se 400."""
+            resp = await client.post(url, json=payload, timeout=30.0)
+            if resp.status_code == 200:
+                return True
+            logger.warning(
+                f"[TG] {resp.status_code} ao chamar {url.split('/')[-1]}: {resp.text[:300]}"
+            )
+            return False
+
+        tg_base   = f"https://api.telegram.org/bot{bot_token}"
+        media_tg  = f"{tg_base}/send{'Video' if video_url else 'Photo'}"
+        text_tg   = f"{tg_base}/sendMessage"
+
+        common = {"chat_id": channel_id, "parse_mode": "HTML", "reply_markup": reply_markup}
 
         try:
-            async with httpx.AsyncClient() as http_client:
-                # --- Tentativa 1: com mídia (foto ou vídeo) ---
-                sent_ok = False
-                if media_url and telegram_url and media_field:
-                    media_payload = {**base_payload, media_field: media_url, "caption": message}
-                    response = await http_client.post(telegram_url, json=media_payload, timeout=30.0)
+            async with httpx.AsyncClient() as client:
+                sent = False
 
-                    if response.status_code == 200:
-                        sent_ok = True
-                        logger.info(f"[Telegram] Produto {item_id} enviado com mídia para {channel_id} (topic={thread_id})")
-                    else:
-                        logger.warning(f"[Telegram] Falha no envio com mídia ({response.status_code}): {response.text[:200]}")
+                # L1: foto/vídeo + tópico
+                if media_url and media_field and thread_id:
+                    sent = await tg_post(client, media_tg, {
+                        **common,
+                        media_field: media_url,
+                        "caption": message,
+                        "message_thread_id": thread_id,
+                        **({"supports_streaming": True} if video_url else {}),
+                    })
 
-                # --- Tentativa 2: fallback texto (sem mídia) — MANTÉM O TÓPICO ---
-                if not sent_ok:
-                    text_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-                    text_payload = {
-                        **base_payload,             # ← inclui message_thread_id!
+                # L2: foto/vídeo sem tópico
+                if not sent and media_url and media_field:
+                    sent = await tg_post(client, media_tg, {
+                        **common,
+                        media_field: media_url,
+                        "caption": message,
+                        **({"supports_streaming": True} if video_url else {}),
+                    })
+
+                # L3: texto + tópico
+                if not sent and thread_id:
+                    sent = await tg_post(client, text_tg, {
+                        **common,
+                        "text": message,
+                        "message_thread_id": thread_id,
+                        "disable_web_page_preview": True,
+                    })
+
+                # L4: texto sem tópico (último recurso — sempre funciona)
+                if not sent:
+                    ok_resp = await client.post(text_tg, json={
+                        **common,
                         "text": message,
                         "disable_web_page_preview": True,
-                    }
-                    text_response = await http_client.post(text_url, json=text_payload, timeout=15.0)
-                    text_response.raise_for_status()
-                    logger.info(f"[Telegram] Produto {item_id} enviado como texto para {channel_id} (topic={thread_id})")
+                    }, timeout=15.0)
+                    ok_resp.raise_for_status()
+                    sent = True
 
-                return {
-                    "success": True,
-                    "message": "Produto enviado para o Telegram com sucesso!",
-                    "product_name": product.get("productName", str(item_id)),
-                    "sent_at": datetime.now().isoformat(),
-                    "topic": thread_id,
-                    "has_media": sent_ok,
-                }
+            logger.info(f"[TG] Produto {item_id} entregue (topic={thread_id} mídia={media_field})")
+            return {
+                "success": True,
+                "message": "Produto enviado para o Telegram com sucesso!",
+                "product_name": product.get("productName", str(item_id)),
+                "sent_at": datetime.now().isoformat(),
+                "topic": thread_id,
+                "has_media": bool(media_url),
+            }
 
         except httpx.HTTPError as e:
-            logger.error(f"[Telegram] Erro HTTP ao enviar: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Erro ao enviar para Telegram: {str(e)}"
-            )
+            logger.error(f"[TG] Erro HTTP final ao enviar {item_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao enviar para Telegram: {str(e)}")
 
     except HTTPException:
         raise
     except httpx.HTTPError as e:
         logger.error(f"[Telegram] Erro HTTP ao enviar: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Erro ao enviar para Telegram: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Erro ao enviar para Telegram: {str(e)}")
     except Exception as e:
         logger.error(f"[Telegram] Erro ao enviar produto {item_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao enviar produto: {str(e)}")
