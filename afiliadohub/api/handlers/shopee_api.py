@@ -607,13 +607,28 @@ async def send_product_to_telegram(
         # Usa os dados do produto enviados pelo frontend
         product = product_data
 
+        # Funções de segurança: às vezes o frontend manda o dado dentro de array [valor]
+        def safe_float(val, default=0.0):
+            if isinstance(val, list): val = val[0] if val else default
+            try: return float(val or default)
+            except (ValueError, TypeError): return default
+
+        def safe_int(val, default=0):
+            if isinstance(val, list): val = val[0] if val else default
+            try: return int(val or default)
+            except (ValueError, TypeError): return default
+
+        def safe_str(val, default=""):
+            if isinstance(val, list): val = val[0] if val else default
+            return str(val or default)
+
         # Formata mensagem para Telegram estilo "Brutalist / Alta Conversão"
-        price    = float(product.get("priceMin", 0))
-        discount = float(product.get("priceDiscountRate", 0) or 0)
-        sales    = int(product.get("sales", 0) or 0)
-        rating   = product.get("ratingStar", "N/A")
-        shop_type = int(product.get("shopType", 0) or 0)
-        product_name = product.get("productName", "Produto") or "Produto"
+        price    = safe_float(product.get("priceMin", 0))
+        discount = safe_float(product.get("priceDiscountRate", 0))
+        sales    = safe_int(product.get("sales", 0))
+        rating   = safe_str(product.get("ratingStar", "N/A"))
+        shop_type = safe_int(product.get("shopType", 0))
+        product_name = safe_str(product.get("productName", "Produto"))
 
         # Trunca e escapa o nome (evita HTML inválido)
         if len(product_name) > 60:
